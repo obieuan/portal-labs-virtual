@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal de Laboratorios Virtuales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Navbar -->
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-flask text-blue-500 text-2xl mr-3"></i>
+                    <h1 class="text-xl font-bold">Laboratorios Virtuales</h1>
+                </div>
+                <div class="flex items-center">
+                    <span class="text-gray-400 mr-4" id="userEmail">admin@universidad.edu.mx</span>
+                    <button onclick="logout()" class="text-red-400 hover:text-red-300">
+                        <i class="fas fa-sign-out-alt"></i> Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Labs Activos</p>
+                        <p class="text-3xl font-bold text-blue-500" id="activeLabs">-</p>
+                    </div>
+                    <i class="fas fa-server text-blue-500 text-3xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Máximo</p>
+                        <p class="text-3xl font-bold text-green-500" id="maxLabs">-</p>
+                    </div>
+                    <i class="fas fa-database text-green-500 text-3xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Disponibles</p>
+                        <p class="text-3xl font-bold text-yellow-500" id="availableLabs">-</p>
+                    </div>
+                    <i class="fas fa-plus-circle text-yellow-500 text-3xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Total Usuarios</p>
+                        <p class="text-3xl font-bold text-purple-500" id="totalUsers">-</p>
+                    </div>
+                    <i class="fas fa-users text-purple-500 text-3xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mb-8">
+            <button 
+                onclick="createLab()" 
+                id="createBtn"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 flex items-center gap-2">
+                <i class="fas fa-plus"></i>
+                Crear Nuevo Laboratorio
+            </button>
+        </div>
+
+        <!-- My Labs Section -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
+                <i class="fas fa-laptop-code text-blue-500"></i>
+                Mis Laboratorios
+            </h2>
+            
+            <div id="labsList" class="space-y-4">
+                <!-- Los labs se cargarán aquí -->
+            </div>
+            
+            <div id="noLabs" class="text-center py-12 text-gray-500">
+                <i class="fas fa-flask text-6xl mb-4"></i>
+                <p class="text-xl">No tienes laboratorios activos</p>
+                <p class="text-sm mt-2">Haz clic en "Crear Nuevo Laboratorio" para comenzar</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div id="loadingModal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-8 text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-xl">Creando tu laboratorio...</p>
+            <p class="text-gray-400 mt-2">Esto puede tomar 30-60 segundos</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

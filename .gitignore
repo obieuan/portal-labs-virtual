@@ -1,0 +1,13 @@
+# Credenciales
+.env
+*.env
+backend/.env
+
+# Node
+node_modules/
+package-lock.json
+*.log
+
+# OS
+.DS_Store
+*.swp

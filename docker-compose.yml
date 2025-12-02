@@ -1,0 +1,44 @@
+services:
+  # Base de datos del portal
+  postgres-portal:
+    image: postgres:15-alpine
+    container_name: portal-db
+    environment:
+      POSTGRES_USER: portal_admin
+      POSTGRES_PASSWORD: portal_pass_2024
+      POSTGRES_DB: portal_labs
+    volumes:
+      - portal_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal_admin -d portal_labs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend del portal
+  backend:
+    build: ./backend
+    container_name: portal-backend
+    network_mode: host
+    environment:
+      - DB_HOST=localhost
+      - DB_PORT=5433
+      - DB_USER=portal_admin
+      - DB_PASSWORD=portal_pass_2024
+      - DB_NAME=portal_labs
+      - PORTAINER_URL=http://localhost:9000
+      - PORTAINER_TOKEN=${PORTAINER_TOKEN}
+      - PORTAINER_ENDPOINT_ID=3
+      - PORT=4000
+      - NODE_ENV=production
+      - JWT_SECRET=tu_secreto_super_seguro_cambialo_123456
+    depends_on:
+      postgres-portal:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  portal_db_data:
