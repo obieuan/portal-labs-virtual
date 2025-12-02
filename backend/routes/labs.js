@@ -10,6 +10,17 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Middleware para verificar que sea admin
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+  if (!req.session.user.is_admin) {
+    return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
+  }
+  next();
+}
+
 // Obtener estadísticas generales
 router.get('/stats', requireAuth, async (req, res) => {
   try {

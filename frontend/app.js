@@ -13,11 +13,29 @@ async function checkAuth() {
         }
         
         window.currentUser = data.user;
+         // Mostrar email en navbar
+         const userEmailElement = document.getElementById('userEmail');
+         if (userEmailElement) {
+             userEmailElement.textContent = data.user.email;
+         }
+         
+         // Mostrar/ocultar botón de admin
+         if (data.user.isAdmin) {
+             showAdminButton();
+         }
         return true;
     } catch (error) {
         console.error('Error verificando autenticación:', error);
         window.location.href = '/login.html';
         return false;
+    }
+}
+
+// Mostrar botón de panel admin
+function showAdminButton() {
+    const adminBtn = document.getElementById('adminPanelBtn');
+    if (adminBtn) {
+        adminBtn.classList.remove('hidden');
     }
 }
 
@@ -32,6 +50,11 @@ checkAuth().then(authenticated => {
         });
     }
 });
+
+// Ir al panel admin
+function goToAdminPanel() {
+    window.location.href = '/admin.html';
+}
 
 const API_URL = '/api';
 

@@ -40,9 +40,11 @@ app.use(session({
 // Routes
 const authRoutes = require('./routes/auth');
 const labRoutes = require('./routes/labs');
+const adminRoutes = require('./routes/admin'); 
 
 app.use('/auth', authRoutes);
 app.use('/api/labs', labRoutes);
+app.use('/api/admin', adminRoutes); 
 
 // Health check
 app.get('/api/health', (req, res) => {
