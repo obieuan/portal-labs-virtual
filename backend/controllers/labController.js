@@ -5,7 +5,7 @@ const portainerClient = require('../config/portainer');
 async function getNextAvailablePort(rangeStart, rangeEnd) {
   const result = await pool.query(
     'SELECT ssh_port, app_port FROM labs WHERE status = $1',
-    ['active']
+    ['deleted']
   );
   
   const usedPorts = new Set();
@@ -24,7 +24,7 @@ async function getNextAvailablePort(rangeStart, rangeEnd) {
 }
 
 // Función auxiliar: Generar docker-compose.yml
-function generateDockerCompose(sshPort, appPort, userEmail) {
+function generateDockerCompose(sshPort, appPort, userEmail, stackName) {  
   const username = userEmail.split('@')[0];
   const password = username + '2024'; // Contraseña simple por ahora
   
@@ -121,7 +121,7 @@ async function createLab(userId, userEmail) {
     // 4. Crear stack en Portainer
     const username = userEmail.split('@')[0];
     const stackName = `lab-${username}-${Date.now()}`;
-    const dockerCompose = generateDockerCompose(sshPort, appPort, userEmail);
+    const dockerCompose = generateDockerCompose(sshPort, appPort, userEmail, stackName); 
     
     const portainerResponse = await portainerClient.post(
       `/stacks/create/standalone/string?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`,
@@ -184,54 +184,48 @@ async function createLab(userId, userEmail) {
   }
 }
 
-// Obtener laboratorios del usuario
+// Obtener laboratorios del usuario (excluye eliminados)
 async function getUserLabs(userId) {
   const result = await pool.query(
-    'SELECT * FROM labs WHERE user_id = $1 ORDER BY created_at DESC',
-    [userId]
+    'SELECT * FROM labs WHERE user_id = $1 AND status != $2 ORDER BY created_at DESC',
+    [userId, 'deleted']
   );
   return result.rows;
 }
 
-// Eliminar laboratorio
+// Obtener todos los laboratorios para admins
+async function getAllLabs() {
+  const result = await pool.query(
+    'SELECT * FROM labs WHERE status != $1 ORDER BY created_at DESC',
+    ['deleted']
+  );
+  return result.rows;
+}
+
+// Eliminar laboratorio (soft delete)
 async function deleteLab(labId, userId, isAdmin = false) {
   try {
-    // Obtener información del lab
-    let query = 'SELECT * FROM labs WHERE id = $1';
-    const params = [labId];
-    
+    let query = 'SELECT * FROM labs WHERE id = $1 AND status != $2';
+    let params = [labId, 'deleted'];
+
     if (!isAdmin) {
-      query += ' AND user_id = $2';
+      query += ' AND user_id = $3';
       params.push(userId);
     }
-    
+
     const labResult = await pool.query(query, params);
-    
+
     if (labResult.rows.length === 0) {
-      throw new Error('Laboratorio no encontrado');
+      throw new Error('Laboratorio no encontrado o no autorizado para eliminar.');
     }
-    
-    const lab = labResult.rows[0];
-    
-    // Eliminar stack en Portainer
-    await portainerClient.delete(
-      `/stacks/${lab.stack_id}?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`
-    );
-    
-    // Actualizar estado en BD
+
+    // Soft delete - marcar como eliminado
     await pool.query(
       'UPDATE labs SET status = $1 WHERE id = $2',
       ['deleted', labId]
     );
-    
-    // Registrar actividad
-    await pool.query(
-      'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',
-      [userId, 'lab_deleted', `Laboratorio ${lab.container_name} eliminado`]
-    );
-    
-    return { success: true, message: 'Laboratorio eliminado correctamente' };
-    
+
+    return { message: 'Laboratorio eliminado exitosamente.' };
   } catch (error) {
     console.error('Error eliminando laboratorio:', error);
     throw error;
@@ -299,6 +293,7 @@ async function getStats() {
 module.exports = {
   createLab,
   getUserLabs,
+  getAllLabs,
   deleteLab,
   cleanupExpiredLabs,
   getStats

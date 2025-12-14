@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createLab, getUserLabs, deleteLab, getStats } = require('../controllers/labController');
+const { createLab, getUserLabs, getAllLabs, deleteLab, getStats } = require('../controllers/labController');
 const pool = require('../config/database');  // ← AGREGAR
 const portainerClient = require('../config/portainer');  // ← AGREGAR
 
@@ -37,6 +37,16 @@ router.get('/stats', requireAuth, async (req, res) => {
 router.get('/my-labs', requireAuth, async (req, res) => {
   try {
     const labs = await getUserLabs(req.session.user.id);
+    res.json(labs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NUEVO: Obtener todos los labs (solo admin)
+router.get('/admin/all-labs', requireAdmin, async (req, res) => {
+  try {
+    const labs = await getAllLabs();
     res.json(labs);
   } catch (error) {
     res.status(500).json({ error: error.message });

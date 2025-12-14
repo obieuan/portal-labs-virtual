@@ -246,9 +246,7 @@ async function deleteLab(labId) {
         
         if (response.ok) {
             alert('Laboratorio eliminado correctamente');
-            // Recargar inmediatamente
-            loadStats();
-            loadMyLabs();
+            window.location.reload();  
         } else {
             alert('Error: ' + data.error);
         }
