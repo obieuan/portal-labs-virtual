@@ -12,17 +12,20 @@ async function checkAuth() {
             return false;
         }
         
+        // Guardar info del usuario
         window.currentUser = data.user;
-         // Mostrar email en navbar
-         const userEmailElement = document.getElementById('userEmail');
-         if (userEmailElement) {
-             userEmailElement.textContent = data.user.email;
-         }
-         
-         // Mostrar/ocultar botón de admin
-         if (data.user.isAdmin) {
-             showAdminButton();
-         }
+        
+        // Mostrar email en navbar
+        const userEmailElement = document.getElementById('userEmail');
+        if (userEmailElement) {
+            userEmailElement.textContent = data.user.email;
+        }
+        
+        // Mostrar/ocultar botón de admin
+        if (data.user.isAdmin) {
+            showAdminButton();
+        }
+        
         return true;
     } catch (error) {
         console.error('Error verificando autenticación:', error);
@@ -39,21 +42,29 @@ function showAdminButton() {
     }
 }
 
-// Verificar autenticación antes de cargar la página
-checkAuth().then(authenticated => {
-    if (authenticated) {
-        document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            loadMyLabs();
-            setInterval(loadStats, 30000);
-            setInterval(loadMyLabs, 30000);
-        });
-    }
-});
-
 // Ir al panel admin
 function goToAdminPanel() {
     window.location.href = '/admin.html';
+}
+
+// Verificar autenticación ANTES de DOMContentLoaded
+checkAuth().then(authenticated => {
+    if (authenticated) {
+        // Usuario autenticado, cargar página
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
+    }
+});
+
+// Inicializar aplicación
+function initApp() {
+    loadStats();
+    loadMyLabs();
+    setInterval(loadStats, 30000);
+    setInterval(loadMyLabs, 30000);
 }
 
 const API_URL = '/api';
@@ -61,7 +72,9 @@ const API_URL = '/api';
 // Cargar estadísticas
 async function loadStats() {
     try {
-        const response = await fetch(`${API_URL}/labs/stats`);
+        const response = await fetch(`${API_URL}/labs/stats`, {
+            credentials: 'include'
+        });
         const data = await response.json();
         
         document.getElementById('activeLabs').textContent = data.activeLabs;
@@ -87,7 +100,9 @@ async function loadStats() {
 // Cargar laboratorios del usuario
 async function loadMyLabs() {
     try {
-        const response = await fetch(`${API_URL}/labs/my-labs`);
+        const response = await fetch(`${API_URL}/labs/my-labs`, {
+            credentials: 'include'
+        });
         const labs = await response.json();
         
         const labsList = document.getElementById('labsList');
@@ -195,7 +210,8 @@ async function createLab() {
     
     try {
         const response = await fetch(`${API_URL}/labs/create`, {
-            method: 'POST'
+            method: 'POST',
+            credentials: 'include'
         });
         
         const data = await response.json();
@@ -222,13 +238,15 @@ async function deleteLab(labId) {
     
     try {
         const response = await fetch(`${API_URL}/labs/${labId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
         });
         
         const data = await response.json();
         
         if (response.ok) {
             alert('Laboratorio eliminado correctamente');
+            // Recargar inmediatamente
             loadStats();
             loadMyLabs();
         } else {
