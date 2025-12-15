@@ -33,6 +33,9 @@ checkAdmin().then(isAdmin => {
 
 let labsCache = [];
 let usersCache = [];
+let labsFiltered = [];
+let labPage = 1;
+const LAB_PAGE_SIZE = 10;
 
 function registerFilters() {
     const labSearch = document.getElementById('labSearch');
@@ -62,7 +65,7 @@ async function loadAllLabs() {
             credentials: 'include'
         });
         labsCache = await response.json();
-        renderLabs(labsCache);
+        applyLabFilters(); // will render with filters + pagination
     } catch (error) {
         console.error('Error cargando labs:', error);
     }
@@ -72,7 +75,7 @@ function applyLabFilters() {
     const term = (document.getElementById('labSearch')?.value || '').toLowerCase().trim();
     const status = document.getElementById('labStatusFilter')?.value || 'ALL';
 
-    const filtered = labsCache.filter(lab => {
+    labsFiltered = labsCache.filter(lab => {
         const matchTerm =
             !term ||
             (lab.email && lab.email.toLowerCase().includes(term)) ||
@@ -82,22 +85,50 @@ function applyLabFilters() {
         return matchTerm && matchStatus;
     });
 
-    renderLabs(filtered);
+    labPage = 1;
+    renderLabsPaged();
 }
 
-function renderLabs(listData) {
+function renderLabsPaged() {
     const list = document.getElementById('allLabsList');
     const noLabs = document.getElementById('noAllLabs');
+    const countLabel = document.getElementById('labCountLabel');
+    const pageInfo = document.getElementById('labPageInfo');
+    const prevBtn = document.getElementById('labPrevBtn');
+    const nextBtn = document.getElementById('labNextBtn');
+
+    const total = labsFiltered.length;
+    const totalPages = Math.max(1, Math.ceil(total / LAB_PAGE_SIZE));
+    labPage = Math.min(Math.max(labPage, 1), totalPages);
+
+    const start = (labPage - 1) * LAB_PAGE_SIZE;
+    const pageData = labsFiltered.slice(start, start + LAB_PAGE_SIZE);
 
     if (!list) return;
 
-    if (!listData || listData.length === 0) {
+    if (!pageData || pageData.length === 0) {
         list.innerHTML = '';
         if (noLabs) noLabs.classList.remove('hidden');
     } else {
         if (noLabs) noLabs.classList.add('hidden');
-        list.innerHTML = listData.map(lab => renderAdminLab(lab)).join('');
+        list.innerHTML = pageData.map(lab => renderAdminLab(lab)).join('');
     }
+
+    if (countLabel) countLabel.textContent = `Mostrando ${pageData.length} de ${total}`;
+    if (pageInfo) pageInfo.textContent = `Página ${labPage} de ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = labPage <= 1;
+    if (nextBtn) nextBtn.disabled = labPage >= totalPages;
+}
+
+function labPrevPage() {
+    labPage = Math.max(labPage - 1, 1);
+    renderLabsPaged();
+}
+
+function labNextPage() {
+    const totalPages = Math.max(1, Math.ceil(labsFiltered.length / LAB_PAGE_SIZE));
+    labPage = Math.min(labPage + 1, totalPages);
+    renderLabsPaged();
 }
 
 // Renderizar lab para admin
@@ -111,6 +142,31 @@ function renderAdminLab(lab) {
 
     const statusLabel = getStatusLabel(lab.status);
     const isActive = lab.status === 'ACTIVO';
+    const portsBlock = isActive ? `
+            <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
+                <div><strong>SSH Port:</strong> ${lab.ssh_port}</div>
+                <div><strong>App Port:</strong> ${lab.app_port}</div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="extendLab(${lab.id}, 2)" 
+                        class="bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded">
+                    <i class="fas fa-clock"></i> +2h
+                </button>
+                <button onclick="extendLab(${lab.id}, 24)" 
+                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded">
+                    <i class="fas fa-clock"></i> +24h
+                </button>
+                <button onclick="adminDeleteLab(${lab.id})" 
+                        class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded ml-auto">
+                    <i class="fas fa-trash"></i> Eliminar
+                </button>
+            </div>
+    ` : `
+            <div class="mt-4 text-sm text-gray-400">
+                <p>Detalles de conexión ocultos: laboratorio no activo.</p>
+            </div>
+    `;
     
     return `
         <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
@@ -125,31 +181,11 @@ function renderAdminLab(lab) {
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-400">Tiempo restante</p>
-                    <p class="${timeColor} font-bold text-lg">${timeLeft === 0 ? 'EXPIRADO' : `${hours}h ${minutes}m`}</p>
+                    <p class="${timeColor} font-bold text-lg">${!isActive ? 'Inactivo' : (timeLeft === 0 ? 'EXPIRADO' : `${hours}h ${minutes}m`)}</p>
                 </div>
             </div>
             
-            <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
-                <div><strong>SSH Port:</strong> ${lab.ssh_port}</div>
-                <div><strong>App Port:</strong> ${lab.app_port}</div>
-            </div>
-            
-            <div class="flex gap-2">
-                <button onclick="extendLab(${lab.id}, 2)" 
-                        class="bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded ${isActive ? '' : 'opacity-50 cursor-not-allowed'}"
-                        ${isActive ? '' : 'disabled'}>
-                    <i class="fas fa-clock"></i> +2h
-                </button>
-                <button onclick="extendLab(${lab.id}, 24)" 
-                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded ${isActive ? '' : 'opacity-50 cursor-not-allowed'}"
-                        ${isActive ? '' : 'disabled'}>
-                    <i class="fas fa-clock"></i> +24h
-                </button>
-                <button onclick="adminDeleteLab(${lab.id})" 
-                        class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded ml-auto">
-                    <i class="fas fa-trash"></i> Eliminar
-                </button>
-            </div>
+            ${portsBlock}
         </div>
     `;
 }

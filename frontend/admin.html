@@ -71,6 +71,21 @@
                     </div>
                 </div>
 
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-3">
+                    <div class="text-sm text-gray-300">
+                        <span id="labCountLabel">Mostrando 0</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-sm">
+                        <button id="labPrevBtn" onclick="labPrevPage()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded border border-gray-600">
+                            « Anterior
+                        </button>
+                        <span id="labPageInfo" class="text-gray-300">Página 1</span>
+                        <button id="labNextBtn" onclick="labNextPage()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded border border-gray-600">
+                            Siguiente »
+                        </button>
+                    </div>
+                </div>
+
                 <div id="allLabsList" class="space-y-4"></div>
                 <div id="noAllLabs" class="text-center py-12 text-gray-500 hidden">
                     <i class="fas fa-inbox text-6xl mb-4"></i>
