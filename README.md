@@ -1,97 +1,88 @@
-# 🧪 Portal de Laboratorios Virtuales
+# Portal de Laboratorios Virtuales
 
-Sistema de gestión de laboratorios virtuales con autenticación Microsoft 365 para Universidad Modelo.
+Sistema de gestión de laboratorios virtuales con autenticación Microsoft 365.
 
-## 🚀 Características
+## Características
+- Autenticación Microsoft 365 (Azure AD).
+- Contenedores con SSH + Node.js + PostgreSQL.
+- Panel de administración y gestión de roles (Admin/Alumno).
+- Límites automáticos: 2 labs por alumno, 20 globales, TTL 24h.
+- Estadísticas y limpieza de labs expirados.
 
-- ✅ Autenticación Microsoft 365 (Azure AD)
-- ✅ Contenedores con SSH + Node.js + PostgreSQL
-- ✅ Panel de administración
-- ✅ Gestión de roles (Admin/Alumno)
-- ✅ Límites de tiempo automáticos
-- ✅ Métricas en tiempo real
+## Stack
+- Backend: Node.js + Express.
+- Frontend: HTML + TailwindCDN.
+- Base de datos: PostgreSQL 15.
+- Contenedores: Docker + Portainer.
+- Proxy: Nginx.
+- Auth: Azure AD OAuth2.
 
-## 📋 Stack Tecnológico
+## Requisitos
+- Docker y Docker Compose.
+- Azure AD app (Client ID, Tenant ID, Client Secret).
+- Portainer CE operativo con endpoint configurado.
 
-- **Backend**: Node.js + Express
-- **Frontend**: HTML + TailwindCSS
-- **Base de datos**: PostgreSQL
-- **Contenedores**: Docker + Portainer
-- **Proxy**: Nginx
-- **Auth**: Azure AD OAuth 2.0
-
-## ⚙️ Instalación
-
-### Requisitos previos
-- Docker & Docker Compose
-- Node.js 20+
-- PostgreSQL 13+
-- Portainer
-- Nginx
-- Cuenta Azure AD
-
-### Setup
-
-1. Clonar repo:
+## Configuración rápida (local)
+1) Clonar:
 ```bash
 git clone https://github.com/obieuan/portal-labs-virtual.git
 cd portal-labs-virtual
 ```
 
-2. Configurar variables de entorno:
+2) Variables de entorno (en la raíz):
 ```bash
-cp backend/.env.example backend/.env
-# Editar backend/.env con tus credenciales
+cp backend/.env.example .env
+# Edita .env con PORTAINER_URL, PORTAINER_TOKEN, PORTAINER_ENDPOINT_ID,
+# PUBLIC_HOST, CORS_ORIGINS, AZURE_* y credenciales de DB.
 ```
 
-3. Iniciar base de datos:
+3) Imagen base para labs (una sola vez):
 ```bash
-docker compose up -d portal-db
+docker build -t lab-base:latest -f lab-base/Dockerfile lab-base
 ```
 
-4. Ejecutar migraciones:
+4) Migración MVP:
 ```bash
-docker exec -it portal-db psql -U portal_admin -d portal_labs -f /docker-entrypoint-initdb.d/init.sql
+docker cp migrations/20251214_lab_mvp.sql portal-db:/tmp/
+docker exec -i portal-db psql -U portal_admin -d portal_labs -f /tmp/20251214_lab_mvp.sql
 ```
 
-5. Iniciar servicios:
+5) Levantar servicios:
 ```bash
+docker compose build --no-cache backend
 docker compose up -d
 ```
 
-6. Acceder:
-```
-https://tu-dominio.com
-```
+6) Acceso:
+- Frontend: `http://localhost:8081`
+- Backend health: `http://localhost:4000/api/health`
 
-## 🔐 Configuración Azure AD
+## Configuración Azure AD
+1) Registrar app en Azure Portal.
+2) Redirect URI local: `http://localhost:8081/auth/callback` (ajusta para producción).
+3) Permisos: `User.Read`, `email`, `profile`, `openid`.
+4) Colocar Client ID, Tenant ID y Client Secret en `.env`.
 
-1. Registrar aplicación en [Azure Portal](https://portal.azure.com)
-2. Obtener: Client ID, Tenant ID, Client Secret
-3. Configurar Redirect URI: `https://tu-dominio.com/auth/callback`
-4. Agregar permisos: User.Read, email, profile, openid
-5. Actualizar `backend/.env`
-
-## 📁 Estructura del proyecto
+## Estructura
 ```
-portal-labs/
-├── backend/
-│   ├── config/         # Configuraciones
-│   ├── controllers/    # Lógica de negocio
-│   ├── routes/         # Rutas API
-│   └── server.js       # Punto de entrada
-├── frontend/
-│   ├── index.html
-│   ├── login.html
-│   └── app.js
-├── docker-compose.yml
-└── README.md
+backend/
+  config/        # DB, Portainer, etc.
+  controllers/   # Lógica de negocio
+  routes/        # Rutas API
+  migrations/    # SQL de esquema
+frontend/
+  index.html, login.html, admin.html, app.js, admin.js
+lab-base/
+  Dockerfile     # Imagen base con sshd + postgres + sudo
+docker-compose.yml
+nginx.conf
+README.md
 ```
 
-## 📝 Licencia
+## Notas de operación
+- Backend lee el `.env` de la raíz (no el de `backend/`).
+- El cliente Portainer usa solo `X-API-Key` (sin Authorization).
+- Contenedores/volúmenes se nombran por stack (`lab-<usuario>-<timestamp>`) para permitir múltiples labs.
 
+## Licencia
 MIT License
-
-## 👨‍💻 Autor
-
-Gabriel Euan - Universidad Modelo
