@@ -4,14 +4,26 @@ const pool = require('../config/database');
 const portainerClient = require('../config/portainer');
 
 // Middleware para verificar que sea admin
-function requireAdmin(req, res, next) {
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'No autenticado' });
+async function requireAdmin(req, res, next) {
+  try {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    const userId = req.session.user.id;
+    const dbUser = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (dbUser.rows.length === 0) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    const currentUser = dbUser.rows[0];
+    req.session.user = currentUser; // refrescar sesión
+    if (!currentUser.is_admin) {
+      return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
-  if (!req.session.user.is_admin) {
-    return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
-  }
-  next();
 }
 
 // Obtener todos los labs (de todos los usuarios)
