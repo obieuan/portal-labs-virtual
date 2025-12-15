@@ -218,7 +218,19 @@ function applyUserFilters() {
 function renderUsers(listData) {
     const table = document.getElementById('usersTable');
     if (!table) return;
-    table.innerHTML = (listData || []).map(user => `
+    table.innerHTML = (listData || []).map(user => {
+        const isProtected = user.id === 1; // proteger admin original
+        const canToggle = !isProtected;
+        const toggleLabel = user.is_admin ? 'Quitar admin' : 'Hacer admin';
+        const toggleClass = user.is_admin ? 'bg-gray-700 hover:bg-gray-600' : 'bg-purple-600 hover:bg-purple-500';
+        const toggleBtn = canToggle ? `
+            <button onclick="toggleAdmin(${user.id}, ${!user.is_admin})"
+                    class="${toggleClass} text-white px-3 py-1 rounded text-xs">
+                ${toggleLabel}
+            </button>
+        ` : '<span class="text-xs text-gray-400">Protegido</span>';
+
+        return `
         <tr class="${user.is_admin ? 'bg-purple-900 bg-opacity-20' : ''}">
             <td class="px-4 py-3">
                 ${user.name}
@@ -228,8 +240,29 @@ function renderUsers(listData) {
             <td class="px-4 py-3 text-center">${user.active_labs}</td>
             <td class="px-4 py-3 text-center">${user.total_labs_created}</td>
             <td class="px-4 py-3">${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}</td>
+            <td class="px-4 py-3 text-center">${toggleBtn}</td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
+}
+
+async function toggleAdmin(userId, makeAdmin) {
+    try {
+        const resp = await fetch(`/api/admin/user/${userId}/admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ is_admin: makeAdmin })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            await loadUserStats();
+        } else {
+            alert(data.error || 'No se pudo actualizar el rol');
+        }
+    } catch (e) {
+        alert('Error actualizando rol');
+    }
 }
 
 function getStatusLabel(status) {

@@ -39,6 +39,39 @@ router.get('/user-stats', requireAdmin, async (req, res) => {
   }
 });
 
+// Toggle rol admin (excepto super admin protegido)
+router.post('/user/:id/admin', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { is_admin } = req.body;
+    const protectedEmail = process.env.SUPER_ADMIN_EMAIL || '';
+
+    const userResult = await pool.query('SELECT id, email, is_admin FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const target = userResult.rows[0];
+
+    if (protectedEmail && target.email === protectedEmail) {
+      return res.status(403).json({ error: 'No se puede modificar el admin protegido' });
+    }
+
+    const updated = await pool.query(
+      'UPDATE users SET is_admin = $2 WHERE id = $1 RETURNING id, email, is_admin, name, last_login',
+      [userId, !!is_admin]
+    );
+
+    await pool.query(
+      'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',
+      [req.session.user.id, 'admin_toggle_role', `Admin ${req.session.user.email} puso is_admin=${!!is_admin} a ${target.email}`]
+    );
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Eliminar cualquier lab (admin puede eliminar labs de otros usuarios)
 router.delete('/lab/:id', requireAdmin, async (req, res) => {
   try {
