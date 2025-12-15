@@ -103,6 +103,8 @@ function renderLabsPaged() {
 
     const start = (labPage - 1) * LAB_PAGE_SIZE;
     const pageData = labsFiltered.slice(start, start + LAB_PAGE_SIZE);
+    const from = total === 0 ? 0 : start + 1;
+    const to = total === 0 ? 0 : start + pageData.length;
 
     if (!list) return;
 
@@ -114,7 +116,7 @@ function renderLabsPaged() {
         list.innerHTML = pageData.map(lab => renderAdminLab(lab)).join('');
     }
 
-    if (countLabel) countLabel.textContent = `Mostrando ${pageData.length} de ${total}`;
+    if (countLabel) countLabel.textContent = `Mostrando ${from}-${to} de ${total}`;
     if (pageInfo) pageInfo.textContent = `Página ${labPage} de ${totalPages}`;
     if (prevBtn) prevBtn.disabled = labPage <= 1;
     if (nextBtn) nextBtn.disabled = labPage >= totalPages;
