@@ -52,6 +52,25 @@
         <div id="content-allLabs" class="tab-content">
             <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
                 <h2 class="text-2xl font-bold mb-6">Todos los Laboratorios Activos</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="text-sm text-gray-400">Buscar por correo/usuario</label>
+                        <input id="labSearch" type="text" placeholder="correo o nombre"
+                               class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
+                    </div>
+                    <div>
+                        <label class="text-sm text-gray-400">Estado</label>
+                        <select id="labStatusFilter"
+                                class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
+                            <option value="ALL">Todos</option>
+                            <option value="ACTIVO">Activos</option>
+                            <option value="CANCELADO_POR_USUARIO">Cancelados por usuario</option>
+                            <option value="CANCELADO_POR_TIEMPO">Expirados</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div id="allLabsList" class="space-y-4"></div>
                 <div id="noAllLabs" class="text-center py-12 text-gray-500 hidden">
                     <i class="fas fa-inbox text-6xl mb-4"></i>
@@ -64,6 +83,13 @@
         <div id="content-users" class="tab-content hidden">
             <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
                 <h2 class="text-2xl font-bold mb-6">Estadísticas de Usuarios</h2>
+                
+                <div class="mb-4">
+                    <label class="text-sm text-gray-400">Buscar por correo/nombre</label>
+                    <input id="userSearch" type="text" placeholder="correo o nombre"
+                           class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gray-700">

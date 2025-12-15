@@ -27,8 +27,22 @@ checkAdmin().then(isAdmin => {
     if (isAdmin) {
         loadAllLabs();
         loadUserStats();
+        registerFilters();
     }
 });
+
+let labsCache = [];
+let usersCache = [];
+
+function registerFilters() {
+    const labSearch = document.getElementById('labSearch');
+    const labStatusFilter = document.getElementById('labStatusFilter');
+    if (labSearch) labSearch.addEventListener('input', applyLabFilters);
+    if (labStatusFilter) labStatusFilter.addEventListener('change', applyLabFilters);
+
+    const userSearch = document.getElementById('userSearch');
+    if (userSearch) userSearch.addEventListener('input', applyUserFilters);
+}
 
 // Gestión de tabs
 function showTab(tabName) {
@@ -47,20 +61,42 @@ async function loadAllLabs() {
         const response = await fetch('/api/admin/all-labs', {
             credentials: 'include'
         });
-        const labs = await response.json();
-        
-        const list = document.getElementById('allLabsList');
-        const noLabs = document.getElementById('noAllLabs');
-        
-        if (labs.length === 0) {
-            list.innerHTML = '';
-            noLabs.classList.remove('hidden');
-        } else {
-            noLabs.classList.add('hidden');
-            list.innerHTML = labs.map(lab => renderAdminLab(lab)).join('');
-        }
+        labsCache = await response.json();
+        renderLabs(labsCache);
     } catch (error) {
         console.error('Error cargando labs:', error);
+    }
+}
+
+function applyLabFilters() {
+    const term = (document.getElementById('labSearch')?.value || '').toLowerCase().trim();
+    const status = document.getElementById('labStatusFilter')?.value || 'ALL';
+
+    const filtered = labsCache.filter(lab => {
+        const matchTerm =
+            !term ||
+            (lab.email && lab.email.toLowerCase().includes(term)) ||
+            (lab.user_name && lab.user_name.toLowerCase().includes(term)) ||
+            (lab.container_name && lab.container_name.toLowerCase().includes(term));
+        const matchStatus = status === 'ALL' || lab.status === status;
+        return matchTerm && matchStatus;
+    });
+
+    renderLabs(filtered);
+}
+
+function renderLabs(listData) {
+    const list = document.getElementById('allLabsList');
+    const noLabs = document.getElementById('noAllLabs');
+
+    if (!list) return;
+
+    if (!listData || listData.length === 0) {
+        list.innerHTML = '';
+        if (noLabs) noLabs.classList.remove('hidden');
+    } else {
+        if (noLabs) noLabs.classList.add('hidden');
+        list.innerHTML = listData.map(lab => renderAdminLab(lab)).join('');
     }
 }
 
@@ -71,8 +107,10 @@ function renderAdminLab(lab) {
     const timeLeft = Math.max(0, Math.floor((expiresAt - now) / 1000 / 60));
     const hours = Math.floor(timeLeft / 60);
     const minutes = timeLeft % 60;
-    
-    const timeColor = timeLeft < 30 ? 'text-red-500' : 'text-green-500';
+    const timeColor = lab.status !== 'ACTIVO' ? 'text-gray-400' : (timeLeft < 30 ? 'text-red-500' : 'text-green-500');
+
+    const statusLabel = getStatusLabel(lab.status);
+    const isActive = lab.status === 'ACTIVO';
     
     return `
         <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
@@ -81,10 +119,13 @@ function renderAdminLab(lab) {
                     <h3 class="text-xl font-bold text-blue-400">${lab.container_name}</h3>
                     <p class="text-gray-400 text-sm">Usuario: ${lab.user_name} (${lab.email})</p>
                     <p class="text-gray-400 text-sm">Creado: ${new Date(lab.created_at).toLocaleString('es-MX')}</p>
+                    <span class="inline-block mt-2 px-2 py-1 text-xs rounded ${isActive ? 'bg-green-700 text-green-100' : 'bg-gray-600 text-gray-100'}">
+                        ${statusLabel}
+                    </span>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-400">Tiempo restante</p>
-                    <p class="${timeColor} font-bold text-lg">${hours}h ${minutes}m</p>
+                    <p class="${timeColor} font-bold text-lg">${timeLeft === 0 ? 'EXPIRADO' : `${hours}h ${minutes}m`}</p>
                 </div>
             </div>
             
@@ -95,11 +136,13 @@ function renderAdminLab(lab) {
             
             <div class="flex gap-2">
                 <button onclick="extendLab(${lab.id}, 2)" 
-                        class="bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded">
+                        class="bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded ${isActive ? '' : 'opacity-50 cursor-not-allowed'}"
+                        ${isActive ? '' : 'disabled'}>
                     <i class="fas fa-clock"></i> +2h
                 </button>
                 <button onclick="extendLab(${lab.id}, 24)" 
-                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded">
+                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded ${isActive ? '' : 'opacity-50 cursor-not-allowed'}"
+                        ${isActive ? '' : 'disabled'}>
                     <i class="fas fa-clock"></i> +24h
                 </button>
                 <button onclick="adminDeleteLab(${lab.id})" 
@@ -117,23 +160,46 @@ async function loadUserStats() {
         const response = await fetch('/api/admin/user-stats', {
             credentials: 'include'
         });
-        const users = await response.json();
-        
-        const table = document.getElementById('usersTable');
-        table.innerHTML = users.map(user => `
-            <tr class="${user.is_admin ? 'bg-purple-900 bg-opacity-20' : ''}">
-                <td class="px-4 py-3">
-                    ${user.name}
-                    ${user.is_admin ? '<span class="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">ADMIN</span>' : ''}
-                </td>
-                <td class="px-4 py-3">${user.email}</td>
-                <td class="px-4 py-3 text-center">${user.active_labs}</td>
-                <td class="px-4 py-3 text-center">${user.total_labs_created}</td>
-                <td class="px-4 py-3">${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}</td>
-            </tr>
-        `).join('');
+        usersCache = await response.json();
+        renderUsers(usersCache);
     } catch (error) {
         console.error('Error cargando usuarios:', error);
+    }
+}
+
+function applyUserFilters() {
+    const term = (document.getElementById('userSearch')?.value || '').toLowerCase().trim();
+    const filtered = usersCache.filter(u => {
+        return !term ||
+            (u.email && u.email.toLowerCase().includes(term)) ||
+            (u.name && u.name.toLowerCase().includes(term));
+    });
+    renderUsers(filtered);
+}
+
+function renderUsers(listData) {
+    const table = document.getElementById('usersTable');
+    if (!table) return;
+    table.innerHTML = (listData || []).map(user => `
+        <tr class="${user.is_admin ? 'bg-purple-900 bg-opacity-20' : ''}">
+            <td class="px-4 py-3">
+                ${user.name}
+                ${user.is_admin ? '<span class="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">ADMIN</span>' : ''}
+            </td>
+            <td class="px-4 py-3">${user.email}</td>
+            <td class="px-4 py-3 text-center">${user.active_labs}</td>
+            <td class="px-4 py-3 text-center">${user.total_labs_created}</td>
+            <td class="px-4 py-3">${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}</td>
+        </tr>
+    `).join('');
+}
+
+function getStatusLabel(status) {
+    switch (status) {
+        case 'ACTIVO': return 'Activo';
+        case 'CANCELADO_POR_USUARIO': return 'Cancelado por usuario';
+        case 'CANCELADO_POR_TIEMPO': return 'Expirado';
+        default: return status || 'Desconocido';
     }
 }
 

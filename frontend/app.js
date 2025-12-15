@@ -61,18 +61,36 @@ checkAuth().then(authenticated => {
 
 // Inicializar aplicación
 function initApp() {
-    loadStats();
-    loadMyLabs();
-    setInterval(loadStats, 30000);
-    setInterval(loadMyLabs, 30000);
+    const isAdmin = window.currentUser?.isAdmin;
+    if (isAdmin) {
+        loadStats();
+        loadMyLabs();
+        setInterval(loadStats, 30000);
+        setInterval(loadMyLabs, 30000);
+    } else {
+        hideElementById('card-users');
+        loadMyLabs();
+        setInterval(loadMyLabs, 30000);
+    }
 }
 
 const API_URL = '/api';
 const PUBLIC_HOST = window.location.hostname || '158.69.215.225';
 const SSH_HOST = PUBLIC_HOST;
+const MAX_LABS_ALUMNO = 2;
+
+function hideElementById(id) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.classList.add('hidden');
+    }
+}
 
 // Cargar estadísticas
 async function loadStats() {
+    if (!window.currentUser?.isAdmin) {
+        return;
+    }
     try {
         const response = await fetch(`${API_URL}/labs/stats`, {
             credentials: 'include'
@@ -117,9 +135,27 @@ async function loadMyLabs() {
             noLabs.classList.add('hidden');
             labsList.innerHTML = labs.map(lab => renderLab(lab)).join('');
         }
+
+        // Para alumnos, actualizar contadores personales
+        if (!window.currentUser?.isAdmin) {
+            updateUserCounters(labs.length);
+        }
     } catch (error) {
         console.error('Error cargando laboratorios:', error);
     }
+}
+
+function updateUserCounters(myLabsCount) {
+    const maxUserLabs = MAX_LABS_ALUMNO;
+    const remaining = Math.max(maxUserLabs - myLabsCount, 0);
+
+    const activeEl = document.getElementById('activeLabs');
+    const maxEl = document.getElementById('maxLabs');
+    const availableEl = document.getElementById('availableLabs');
+
+    if (activeEl) activeEl.textContent = myLabsCount;
+    if (maxEl) maxEl.textContent = maxUserLabs;
+    if (availableEl) availableEl.textContent = remaining;
 }
 
 // Renderizar un laboratorio
