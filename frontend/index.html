@@ -17,7 +17,11 @@
                     <h1 class="text-xl font-bold">Laboratorios Virtuales</h1>
                 </div>
                 <div class="flex items-center">
-                    <span class="text-gray-400 mr-4" id="userEmail">admin@universidad.edu.mx</span>
+                    <button id="adminPanelBtn" onclick="goToAdminPanel()" 
+                            class="hidden bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mr-4 transition">
+                        <i class="fas fa-shield-alt"></i> Panel Admin
+                    </button>
+                    <span class="text-gray-400 mr-4" id="userEmail"></span>
                     <button onclick="logout()" class="text-red-400 hover:text-red-300">
                         <i class="fas fa-sign-out-alt"></i> Salir
                     </button>

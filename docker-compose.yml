@@ -4,16 +4,16 @@ services:
     image: postgres:15-alpine
     container_name: portal-db
     environment:
-      POSTGRES_USER: portal_admin
-      POSTGRES_PASSWORD: portal_pass_2024
-      POSTGRES_DB: portal_labs
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
       - portal_db_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U portal_admin -d portal_labs"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,19 +22,27 @@ services:
   backend:
     build: ./backend
     container_name: portal-backend
-    network_mode: host
+    ports:
+      - "4000:4000"
     environment:
-      - DB_HOST=localhost
-      - DB_PORT=5433
-      - DB_USER=portal_admin
-      - DB_PASSWORD=portal_pass_2024
-      - DB_NAME=portal_labs
-      - PORTAINER_URL=http://localhost:9000
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - PORTAINER_URL=${PORTAINER_URL}
       - PORTAINER_TOKEN=${PORTAINER_TOKEN}
-      - PORTAINER_ENDPOINT_ID=3
-      - PORT=4000
-      - NODE_ENV=production
-      - JWT_SECRET=tu_secreto_super_seguro_cambialo_123456
+      - PORTAINER_ENDPOINT_ID=${PORTAINER_ENDPOINT_ID}
+      - LAB_IMAGE=${LAB_IMAGE}
+      - PORT=${PORT}
+      - NODE_ENV=${NODE_ENV}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - PUBLIC_HOST=${PUBLIC_HOST}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_REDIRECT_URI=${AZURE_REDIRECT_URI}
     depends_on:
       postgres-portal:
         condition: service_healthy

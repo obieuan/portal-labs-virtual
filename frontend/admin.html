@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Admin - Laboratorios Virtuales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Navbar -->
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-shield-alt text-purple-500 text-2xl mr-3"></i>
+                    <h1 class="text-xl font-bold">Panel de Administración</h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button onclick="goToMainPanel()" class="text-blue-400 hover:text-blue-300">
+                        <i class="fas fa-arrow-left"></i> Volver al Dashboard
+                    </button>
+                    <span class="text-gray-400" id="userEmail"></span>
+                    <button onclick="logout()" class="text-red-400 hover:text-red-300">
+                        <i class="fas fa-sign-out-alt"></i> Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Tabs -->
+        <div class="mb-6">
+            <div class="border-b border-gray-700">
+                <nav class="flex -mb-px">
+                    <button onclick="showTab('allLabs')" id="tab-allLabs" 
+                            class="tab-button active py-4 px-6 border-b-2 font-medium">
+                        <i class="fas fa-server"></i> Todos los Labs
+                    </button>
+                    <button onclick="showTab('users')" id="tab-users" 
+                            class="tab-button py-4 px-6 border-b-2 font-medium">
+                        <i class="fas fa-users"></i> Usuarios
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Tab: Todos los Labs -->
+        <div id="content-allLabs" class="tab-content">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h2 class="text-2xl font-bold mb-6">Todos los Laboratorios Activos</h2>
+                <div id="allLabsList" class="space-y-4"></div>
+                <div id="noAllLabs" class="text-center py-12 text-gray-500 hidden">
+                    <i class="fas fa-inbox text-6xl mb-4"></i>
+                    <p class="text-xl">No hay laboratorios activos</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Usuarios -->
+        <div id="content-users" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <h2 class="text-2xl font-bold mb-6">Estadísticas de Usuarios</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Usuario</th>
+                                <th class="px-4 py-3 text-left">Email</th>
+                                <th class="px-4 py-3 text-center">Labs Activos</th>
+                                <th class="px-4 py-3 text-center">Total Creados</th>
+                                <th class="px-4 py-3 text-left">Último Login</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTable" class="divide-y divide-gray-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+
+    <style>
+        .tab-button {
+            color: #9CA3AF;
+            border-color: transparent;
+            transition: all 0.2s;
+        }
+        .tab-button:hover {
+            color: #E5E7EB;
+        }
+        .tab-button.active {
+            color: #A78BFA;
+            border-color: #A78BFA;
+        }
+    </style>
+</body>
+</html>
