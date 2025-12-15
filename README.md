@@ -74,7 +74,6 @@ README.md
 ```
 
 ## Notas de operación
-- Backend lee `.env` en la raíz (no uses backend/.env).
 - Contenedores/volúmenes se nombran por stack `lab-<user>-<timestamp>` para evitar colisiones.
 - El rol en sesión se refresca en cada `/auth/me` y en `requireAdmin` para evitar admins stale.
 - Imágenes “unused” quedan en cache (ej. `lab-base`); limpia con `docker image prune` si necesitas espacio, pero mantener `lab-base` acelera despliegues.
