@@ -19,7 +19,8 @@ router.get('/login', (req, res) => {
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(AZURE_CONFIG.redirectUri)}` +
     `&response_mode=query` +
-    `&scope=${encodeURIComponent(AZURE_CONFIG.scope)}`;
+    `&scope=${encodeURIComponent(AZURE_CONFIG.scope)}` +
+    `&prompt=select_account`;
   
   res.redirect(authUrl);
 });
@@ -120,7 +121,9 @@ router.all('/callback', async (req, res) => {
 // Logout
 router.get('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/');
+    res.clearCookie('connect.sid', { path: '/' });
+    res.clearCookie('portainer_api_key', { path: '/' });
+    res.redirect('/login.html');
   });
 });
 
