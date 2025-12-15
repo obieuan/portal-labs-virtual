@@ -21,7 +21,6 @@ router.get('/all-labs', requireAdmin, async (req, res) => {
       SELECT l.*, u.email, u.name as user_name
       FROM labs l
       JOIN users u ON l.user_id = u.id
-      WHERE l.status = 'active'
       ORDER BY l.created_at DESC
     `);
     res.json(result.rows);
@@ -53,13 +52,22 @@ router.delete('/lab/:id', requireAdmin, async (req, res) => {
     
     const lab = labResult.rows[0];
     
-    // Eliminar stack en Portainer
-    await portainerClient.delete(
-      `/stacks/${lab.stack_id}?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`
-    );
+    // Eliminar stack en Portainer (best-effort)
+    try {
+      await portainerClient.delete(
+        `/stacks/${lab.stack_id}?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`
+      );
+      console.log(`Stack ${lab.stack_id} eliminado de Portainer por admin`);
+    } catch (portainerError) {
+      if (portainerError.response && portainerError.response.status === 404) {
+        console.log(`Stack ${lab.stack_id} ya no existe en Portainer (admin)`);
+      } else {
+        console.error('Error eliminando stack en Portainer (continuando):', portainerError.message);
+      }
+    }
     
     // Actualizar estado en BD
-    await pool.query('UPDATE labs SET status = $1 WHERE id = $2', ['deleted', labId]);
+    await pool.query('UPDATE labs SET status = $1, canceled_at = NOW(), cancel_reason = $3 WHERE id = $2', ['CANCELADO_POR_USUARIO', labId, 'cancelado_por_admin']);
     
     // Registrar actividad
     await pool.query(
@@ -87,7 +95,7 @@ router.post('/lab/:id/extend', requireAdmin, async (req, res) => {
     const result = await pool.query(
       `UPDATE labs 
        SET expires_at = expires_at + INTERVAL '${hours} hours'
-       WHERE id = $1 AND status = 'active'
+       WHERE id = $1 AND status = 'ACTIVO'
        RETURNING *`,
       [labId]
     );

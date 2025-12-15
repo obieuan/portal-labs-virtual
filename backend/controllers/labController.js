@@ -1,17 +1,34 @@
 const pool = require('../config/database');
 const portainerClient = require('../config/portainer');
 
-// Función auxiliar: Obtener siguiente puerto disponible
+const STATUS = {
+  ACTIVO: 'ACTIVO',
+  CANCELADO_POR_USUARIO: 'CANCELADO_POR_USUARIO',
+  CANCELADO_POR_TIEMPO: 'CANCELADO_POR_TIEMPO'
+};
+
+const GLOBAL_MAX_LABS = 20;
+const MAX_LABS_ALUMNO = 2;
+const TTL_HOURS = 24;
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
+
+// Función auxiliar: Obtener siguiente puerto disponible evitando labs activos
 async function getNextAvailablePort(rangeStart, rangeEnd) {
   const result = await pool.query(
     'SELECT ssh_port, app_port FROM labs WHERE status = $1',
-    ['deleted']
+    [STATUS.ACTIVO]
   );
-  
+
   const usedPorts = new Set();
+  const addIfValid = (port) => {
+    if (typeof port === 'number' && !Number.isNaN(port)) {
+      usedPorts.add(port);
+    }
+  };
+
   result.rows.forEach(row => {
-    usedPorts.add(row.ssh_port);
-    usedPorts.add(row.app_port);
+    addIfValid(row.ssh_port);
+    addIfValid(row.app_port);
   });
   
   for (let port = rangeStart; port <= rangeEnd; port++) {
@@ -23,24 +40,65 @@ async function getNextAvailablePort(rangeStart, rangeEnd) {
   throw new Error('No hay puertos disponibles');
 }
 
+// Helper para obtener rangos de puertos sin depender del orden de la consulta
+async function getPortRange(startKey, endKey) {
+  const result = await pool.query(
+    'SELECT key, value FROM system_config WHERE key = ANY($1)',
+    [[startKey, endKey]]
+  );
+
+  const config = result.rows.reduce((acc, row) => {
+    acc[row.key] = row.value;
+    return acc;
+  }, {});
+
+  const start = parseInt(config[startKey], 10);
+  const end = parseInt(config[endKey], 10);
+
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    throw new Error(`Configuración de puertos incompleta: ${startKey}/${endKey}`);
+  }
+
+  if (start > end) {
+    throw new Error(`Rango de puertos inválido: ${startKey} (${start}) > ${endKey} (${end})`);
+  }
+
+  return { start, end };
+}
+
+function deriveUsername(containerName, password) {
+  if (containerName && containerName.startsWith('lab-')) {
+    const parts = containerName.split('-');
+    if (parts.length >= 3 && parts[1]) {
+      return parts[1];
+    }
+  }
+  if (password && password.endsWith('2024')) {
+    return password.replace('2024', '');
+  }
+  return null;
+}
+
 // Función auxiliar: Generar docker-compose.yml
 function generateDockerCompose(sshPort, appPort, userEmail, stackName) {  
   const username = userEmail.split('@')[0];
   const password = username + '2024'; // Contraseña simple por ahora
+  const image = process.env.LAB_IMAGE || 'lab-base:latest';
+  const dbHostPort = appPort + 100; // evita colisión con backend (4000)
   
   return `version: '3.8'
 
 services:
   dev-environment:
-    image: node:20
-    container_name: lab-${username}
+    image: ${image}
+    container_name: ${stackName}
     working_dir: /home/${username}/proyecto
     ports:
       - "${sshPort}:22"
       - "${appPort}:3000"
-      - "${appPort + 1000}:5432"
+      - "${dbHostPort}:5432"
     volumes:
-      - lab_${username}_workspace:/home/${username}/proyecto
+      - lab_${stackName}_workspace:/home/${username}/proyecto
     environment:
       - POSTGRES_HOST=localhost
       - POSTGRES_USER=${username}
@@ -48,8 +106,6 @@ services:
       - POSTGRES_DB=proyecto_db
     command: >
       bash -c "
-      apt-get update &&
-      apt-get install -y openssh-server postgresql postgresql-contrib sudo nano &&
       useradd -m -s /bin/bash ${username} &&
       echo '${username}:${password}' | chpasswd &&
       echo '${username} ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
@@ -69,82 +125,78 @@ services:
           memory: 2G
 
 volumes:
-  lab_${username}_workspace:
+  lab_${stackName}_workspace:
 `;
 }
 
 // Crear laboratorio
 async function createLab(userId, userEmail) {
   try {
-    // 1. Verificar si el usuario ya tiene un lab activo
-    const existingLab = await pool.query(
-      'SELECT * FROM labs WHERE user_id = $1 AND status = $2',
-      [userId, 'active']
+    // 1. Verificar límites por usuario y globales
+    const isAdmin = !!(await pool.query('SELECT is_admin FROM users WHERE id = $1', [userId])).rows?.[0]?.is_admin;
+
+    const userActive = await pool.query(
+      'SELECT COUNT(*) FROM labs WHERE user_id = $1 AND status = $2',
+      [userId, STATUS.ACTIVO]
     );
-    
-    if (existingLab.rows.length > 0) {
-      throw new Error('Ya tienes un laboratorio activo');
+    const userActiveCount = parseInt(userActive.rows[0].count, 10);
+
+    if (!isAdmin && userActiveCount >= MAX_LABS_ALUMNO) {
+      throw new Error(`Límite alcanzado: máximo ${MAX_LABS_ALUMNO} laboratorios activos por usuario.`);
     }
-    
-    // 2. Verificar capacidad disponible
-    const configResult = await pool.query(
-      "SELECT value FROM system_config WHERE key = 'max_labs'"
-    );
-    const maxLabs = parseInt(configResult.rows[0].value);
-    
+
     const activeLabsResult = await pool.query(
       'SELECT COUNT(*) FROM labs WHERE status = $1',
-      ['active']
+      [STATUS.ACTIVO]
     );
-    const activeLabs = parseInt(activeLabsResult.rows[0].count);
+    const activeLabs = parseInt(activeLabsResult.rows[0].count, 10);
+    const maxLabs = GLOBAL_MAX_LABS;
     
     if (activeLabs >= maxLabs) {
-      throw new Error('No hay laboratorios disponibles en este momento');
+      throw new Error('No hay laboratorios disponibles en este momento (capacidad global alcanzada).');
     }
     
     // 3. Obtener puertos disponibles
-    const sshPortRange = await pool.query(
-      "SELECT value FROM system_config WHERE key IN ('ssh_port_range_start', 'ssh_port_range_end')"
-    );
-    const sshPortStart = parseInt(sshPortRange.rows[0].value);
-    const sshPortEnd = parseInt(sshPortRange.rows[1].value);
-    
-    const appPortRange = await pool.query(
-      "SELECT value FROM system_config WHERE key IN ('app_port_range_start', 'app_port_range_end')"
-    );
-    const appPortStart = parseInt(appPortRange.rows[0].value);
-    const appPortEnd = parseInt(appPortRange.rows[1].value);
+    const { start: sshPortStart, end: sshPortEnd } = await getPortRange('ssh_port_range_start', 'ssh_port_range_end');
+    const { start: appPortStart, end: appPortEnd } = await getPortRange('app_port_range_start', 'app_port_range_end');
     
     const sshPort = await getNextAvailablePort(sshPortStart, sshPortEnd);
     const appPort = await getNextAvailablePort(appPortStart, appPortEnd);
     
     // 4. Crear stack en Portainer
+    if (!process.env.PORTAINER_URL || !process.env.PORTAINER_TOKEN) {
+      throw new Error('Portainer no está configurado. Define PORTAINER_URL y PORTAINER_TOKEN en el entorno.');
+    }
     const username = userEmail.split('@')[0];
     const stackName = `lab-${username}-${Date.now()}`;
     const dockerCompose = generateDockerCompose(sshPort, appPort, userEmail, stackName); 
     
-    const portainerResponse = await portainerClient.post(
-      `/stacks/create/standalone/string?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`,
-      {
-        name: stackName,
-        stackFileContent: dockerCompose
+    let portainerResponse;
+    try {
+      portainerResponse = await portainerClient.post(
+        `/stacks/create/standalone/string?endpointId=${process.env.PORTAINER_ENDPOINT_ID}`,
+        {
+          name: stackName,
+          stackFileContent: dockerCompose
+        }
+      );
+    } catch (err) {
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error('No se pudo conectar a Portainer (ECONNREFUSED). ¿Está corriendo y accesible en PORTAINER_URL?');
       }
-    );
+      throw err;
+    }
     
-    // 5. Calcular tiempo de expiración
-    const durationResult = await pool.query(
-      "SELECT value FROM system_config WHERE key = 'lab_duration_hours'"
-    );
-    const durationHours = parseInt(durationResult.rows[0].value);
-    const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+    // 5. Calcular tiempo de expiración (24h fijo para MVP)
+    const expiresAt = new Date(Date.now() + TTL_HOURS * 60 * 60 * 1000);
     
     // 6. Guardar en base de datos
     const password = username + '2024';
     const insertResult = await pool.query(
-      `INSERT INTO labs (user_id, container_name, ssh_port, app_port, stack_id, password, expires_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO labs (user_id, owner_email, container_name, ssh_port, ssh_username, app_port, stack_id, portainer_endpoint_id, password, expires_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [userId, stackName, sshPort, appPort, portainerResponse.data.Id, password, expiresAt, 'active']
+      [userId, userEmail, stackName, sshPort, username, appPort, portainerResponse.data.Id, process.env.PORTAINER_ENDPOINT_ID, password, expiresAt, STATUS.ACTIVO]
     );
     
     // 7. Registrar actividad
@@ -157,14 +209,14 @@ async function createLab(userId, userEmail) {
     return {
       id: insertResult.rows[0].id,
       ssh: {
-        host: '158.69.215.225',
+        host: PUBLIC_HOST,
         port: sshPort,
         username: username,
         password: password,
-        command: `ssh -p ${sshPort} ${username}@158.69.215.225`
+        command: `ssh -p ${sshPort} ${username}@${PUBLIC_HOST}`
       },
       app: {
-        url: `http://158.69.215.225:${appPort}`,
+        url: `http://${PUBLIC_HOST}:${appPort}`,
         port: appPort
       },
       database: {
@@ -175,7 +227,8 @@ async function createLab(userId, userEmail) {
         database: 'proyecto_db'
       },
       expiresAt: expiresAt,
-      createdAt: insertResult.rows[0].created_at
+      createdAt: insertResult.rows[0].created_at,
+      status: STATUS.ACTIVO
     };
     
   } catch (error) {
@@ -184,29 +237,34 @@ async function createLab(userId, userEmail) {
   }
 }
 
-// Obtener laboratorios del usuario (excluye eliminados)
+// Obtener laboratorios del usuario (solo activos para dashboard)
 async function getUserLabs(userId) {
   const result = await pool.query(
-    'SELECT * FROM labs WHERE user_id = $1 AND status != $2 ORDER BY created_at DESC',
-    [userId, 'deleted']
+    'SELECT * FROM labs WHERE user_id = $1 AND status = $2 ORDER BY created_at DESC',
+    [userId, STATUS.ACTIVO]
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    ssh_username: deriveUsername(row.container_name, row.password)
+  }));
 }
 
 // Obtener todos los laboratorios para admins
 async function getAllLabs() {
   const result = await pool.query(
-    'SELECT * FROM labs WHERE status != $1 ORDER BY created_at DESC',
-    ['deleted']
+    'SELECT * FROM labs ORDER BY created_at DESC'
   );
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    ssh_username: deriveUsername(row.container_name, row.password)
+  }));
 }
 
 // Eliminar laboratorio (soft delete)
 async function deleteLab(labId, userId, isAdmin = false) {
   try {
-    let query = 'SELECT * FROM labs WHERE id = $1 AND status != $2';
-    let params = [labId, 'deleted'];
+    let query = 'SELECT * FROM labs WHERE id = $1 AND status = $2';
+    let params = [labId, STATUS.ACTIVO];
 
     if (!isAdmin) {
       query += ' AND user_id = $3';
@@ -219,10 +277,10 @@ async function deleteLab(labId, userId, isAdmin = false) {
       throw new Error('Laboratorio no encontrado o no autorizado para eliminar.');
     }
 
-    // Soft delete - marcar como eliminado
+    // Soft delete - marcar como cancelado por usuario
     await pool.query(
-      'UPDATE labs SET status = $1 WHERE id = $2',
-      ['deleted', labId]
+      'UPDATE labs SET status = $1, canceled_at = NOW(), cancel_reason = $2 WHERE id = $3',
+      [STATUS.CANCELADO_POR_USUARIO, 'cancelado_por_usuario', labId]
     );
 
     return { message: 'Laboratorio eliminado exitosamente.' };
@@ -237,7 +295,7 @@ async function cleanupExpiredLabs() {
   try {
     const expiredLabs = await pool.query(
       'SELECT * FROM labs WHERE expires_at < NOW() AND status = $1',
-      ['active']
+      [STATUS.ACTIVO]
     );
     
     console.log(`Encontrados ${expiredLabs.rows.length} laboratorios expirados`);
@@ -249,8 +307,8 @@ async function cleanupExpiredLabs() {
         );
         
         await pool.query(
-          'UPDATE labs SET status = $1 WHERE id = $2',
-          ['deleted', lab.id]
+          'UPDATE labs SET status = $1, canceled_at = NOW(), cancel_reason = $2 WHERE id = $3',
+          [STATUS.CANCELADO_POR_TIEMPO, 'expirado', lab.id]
         );
         
         await pool.query(
@@ -273,20 +331,27 @@ async function cleanupExpiredLabs() {
 async function getStats() {
   const activeLabs = await pool.query(
     'SELECT COUNT(*) FROM labs WHERE status = $1',
-    ['active']
+    [STATUS.ACTIVO]
   );
   
   const totalUsers = await pool.query('SELECT COUNT(*) FROM users');
   
+  let maxLabs = GLOBAL_MAX_LABS;
   const configResult = await pool.query(
     "SELECT value FROM system_config WHERE key = 'max_labs'"
   );
+  if (configResult.rows.length > 0) {
+    const parsed = parseInt(configResult.rows[0].value, 10);
+    if (!Number.isNaN(parsed)) {
+      maxLabs = parsed;
+    }
+  }
   
   return {
-    activeLabs: parseInt(activeLabs.rows[0].count),
-    maxLabs: parseInt(configResult.rows[0].value),
-    totalUsers: parseInt(totalUsers.rows[0].count),
-    availableLabs: parseInt(configResult.rows[0].value) - parseInt(activeLabs.rows[0].count)
+    activeLabs: parseInt(activeLabs.rows[0].count, 10),
+    maxLabs,
+    totalUsers: parseInt(totalUsers.rows[0].count, 10),
+    availableLabs: Math.max(maxLabs - parseInt(activeLabs.rows[0].count, 10), 0)
   };
 }
 

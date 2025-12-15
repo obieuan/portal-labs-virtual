@@ -68,6 +68,8 @@ function initApp() {
 }
 
 const API_URL = '/api';
+const PUBLIC_HOST = window.location.hostname || '158.69.215.225';
+const SSH_HOST = PUBLIC_HOST;
 
 // Cargar estadísticas
 async function loadStats() {
@@ -130,6 +132,10 @@ function renderLab(lab) {
     
     const isExpired = timeLeft === 0;
     const timeColor = timeLeft < 30 ? 'text-red-500' : 'text-green-500';
+    const username = lab.ssh_username || (lab.password ? lab.password.replace('2024', '') : '');
+    const sshHost = SSH_HOST;
+    const sshCommand = username ? `ssh -p ${lab.ssh_port} ${username}@${sshHost}` : 'SSH no disponible';
+    const appUrl = `http://${PUBLIC_HOST}:${lab.app_port}`;
     
     return `
         <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
@@ -152,11 +158,11 @@ function renderLab(lab) {
                         <i class="fas fa-terminal text-green-500"></i> Acceso SSH
                     </h4>
                     <code class="text-xs bg-gray-900 p-2 rounded block mb-2">
-                        ssh -p ${lab.ssh_port} ${lab.password.replace('2024', '')}@158.69.215.225
+                        ${sshCommand}
                     </code>
                     <p class="text-xs text-gray-400">
-                        <strong>Usuario:</strong> ${lab.password.replace('2024', '')}<br>
-                        <strong>Contraseña:</strong> ${lab.password}
+                        <strong>Usuario:</strong> ${username || 'No disponible'}<br>
+                        <strong>Contraseña:</strong> ${lab.password || 'No disponible'}
                     </p>
                 </div>
                 
@@ -164,9 +170,9 @@ function renderLab(lab) {
                     <h4 class="text-sm font-semibold text-gray-300 mb-2">
                         <i class="fas fa-globe text-blue-500"></i> Aplicación Web
                     </h4>
-                    <a href="http://158.69.215.225:${lab.app_port}" target="_blank" 
+                    <a href="${appUrl}" target="_blank" 
                        class="text-blue-400 hover:text-blue-300 text-sm break-all">
-                        http://158.69.215.225:${lab.app_port}
+                        ${appUrl}
                     </a>
                     <p class="text-xs text-gray-400 mt-2">
                         <strong>Puerto:</strong> ${lab.app_port}
@@ -181,15 +187,15 @@ function renderLab(lab) {
                 <div class="grid grid-cols-2 gap-2 text-xs text-gray-400">
                     <div><strong>Host:</strong> localhost</div>
                     <div><strong>Puerto:</strong> 5432</div>
-                    <div><strong>Usuario:</strong> ${lab.password.replace('2024', '')}</div>
-                    <div><strong>Contraseña:</strong> ${lab.password}</div>
+                    <div><strong>Usuario:</strong> ${username || 'No disponible'}</div>
+                    <div><strong>Contraseña:</strong> ${lab.password || 'No disponible'}</div>
                     <div class="col-span-2"><strong>Base de datos:</strong> proyecto_db</div>
                 </div>
             </div>
             
             <div class="flex gap-2">
                 <button 
-                    onclick="copySSH('${lab.ssh_port}', '${lab.password.replace('2024', '')}')"
+                    onclick="copySSH('${lab.ssh_port}', '${username}')"
                     class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded transition duration-200">
                     <i class="fas fa-copy"></i> Copiar comando SSH
                 </button>
@@ -256,8 +262,9 @@ async function deleteLab(labId) {
 }
 
 // Copiar comando SSH
-function copySSH(port, username) {
-    const command = `ssh -p ${port} ${username}@158.69.215.225`;
+function copySSH(port, username, host = SSH_HOST) {
+    const safeUsername = username || 'usuario';
+    const command = `ssh -p ${port} ${safeUsername}@${host}`;
     navigator.clipboard.writeText(command);
     alert('Comando SSH copiado al portapapeles!');
 }

@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { createLab, getUserLabs, getAllLabs, deleteLab, getStats } = require('../controllers/labController');
-const pool = require('../config/database');  // ← AGREGAR
-const portainerClient = require('../config/portainer');  // ← AGREGAR
+const pool = require('../config/database');
+const portainerClient = require('../config/portainer');
 
 // Middleware de autenticación REAL
 function requireAuth(req, res, next) {
@@ -93,7 +93,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
       }
     }
     
-    await pool.query('UPDATE labs SET status = $1 WHERE id = $2', ['deleted', labId]);
+    await pool.query('UPDATE labs SET status = $1, canceled_at = NOW(), cancel_reason = $2 WHERE id = $3', ['CANCELADO_POR_USUARIO', 'cancelado_por_usuario', labId]);
     
     await pool.query(
       'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',

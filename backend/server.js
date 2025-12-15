@@ -12,8 +12,12 @@ app.set('trust proxy', 1);
 
 
 // Middleware
+const defaultOrigins = ['http://158.69.215.225', 'https://devlabs.eium.com.mx', 'http://localhost:8080', 'http://localhost:3000'];
+const envOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean) : [];
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+
 app.use(cors({
-  origin: ['http://158.69.215.225', 'https://devlabs.eium.com.mx'],
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'DELETE', 'PUT'],
   allowedHeaders: ['Content-Type', 'Authorization']
