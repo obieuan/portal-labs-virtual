@@ -4,14 +4,26 @@ const pool = require('../config/database');
 const portainerClient = require('../config/portainer');
 
 // Middleware para verificar que sea admin
-function requireAdmin(req, res, next) {
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'No autenticado' });
+async function requireAdmin(req, res, next) {
+  try {
+    if (!req.session || !req.session.user) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    const userId = req.session.user.id;
+    const dbUser = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (dbUser.rows.length === 0) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+    const currentUser = dbUser.rows[0];
+    req.session.user = currentUser; // refrescar sesión
+    if (!currentUser.is_admin) {
+      return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
-  if (!req.session.user.is_admin) {
-    return res.status(403).json({ error: 'Acceso denegado. Solo administradores.' });
-  }
-  next();
 }
 
 // Obtener todos los labs (de todos los usuarios)
@@ -34,6 +46,39 @@ router.get('/user-stats', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM user_lab_stats');
     res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle rol admin (excepto super admin protegido)
+router.post('/user/:id/admin', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { is_admin } = req.body;
+    const protectedEmail = process.env.SUPER_ADMIN_EMAIL || '';
+
+    const userResult = await pool.query('SELECT id, email, is_admin FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const target = userResult.rows[0];
+
+    if (protectedEmail && target.email === protectedEmail) {
+      return res.status(403).json({ error: 'No se puede modificar el admin protegido' });
+    }
+
+    const updated = await pool.query(
+      'UPDATE users SET is_admin = $2 WHERE id = $1 RETURNING id, email, is_admin, name, last_login',
+      [userId, !!is_admin]
+    );
+
+    await pool.query(
+      'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',
+      [req.session.user.id, 'admin_toggle_role', `Admin ${req.session.user.email} puso is_admin=${!!is_admin} a ${target.email}`]
+    );
+
+    res.json(updated.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

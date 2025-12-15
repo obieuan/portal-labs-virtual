@@ -3,6 +3,13 @@ const router = express.Router();
 const axios = require('axios');
 const pool = require('../config/database');
 
+async function loadCurrentUser(req) {
+  if (!req.session || !req.session.user) return null;
+  const userId = req.session.user.id;
+  const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+  return result.rows[0] || null;
+}
+
 // Configuración de Azure AD
 const AZURE_CONFIG = {
   clientId: process.env.AZURE_CLIENT_ID,
@@ -19,7 +26,8 @@ router.get('/login', (req, res) => {
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(AZURE_CONFIG.redirectUri)}` +
     `&response_mode=query` +
-    `&scope=${encodeURIComponent(AZURE_CONFIG.scope)}`;
+    `&scope=${encodeURIComponent(AZURE_CONFIG.scope)}` +
+    `&prompt=select_account`;
   
   res.redirect(authUrl);
 });
@@ -120,29 +128,38 @@ router.all('/callback', async (req, res) => {
 // Logout
 router.get('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/');
+    res.clearCookie('connect.sid', { path: '/' });
+    res.clearCookie('portainer_api_key', { path: '/' });
+    res.redirect('/login.html');
   });
 });
 
 // Verificar si está autenticado
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   console.log('=== AUTH ME ===');
   console.log('Session ID:', req.sessionID);
   console.log('Session:', req.session);
   console.log('Cookies:', req.headers.cookie);
   
-  if (req.session && req.session.user) {
-    res.json({
+  try {
+    const user = await loadCurrentUser(req);
+    if (!user) {
+      return res.json({ authenticated: false });
+    }
+    // refrescar sesión con datos actuales
+    req.session.user = user;
+    return res.json({
       authenticated: true,
       user: {
-        id: req.session.user.id,
-        email: req.session.user.email,
-        name: req.session.user.name,
-        isAdmin: req.session.user.is_admin
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        isAdmin: user.is_admin
       }
     });
-  } else {
-    res.json({ authenticated: false });
+  } catch (err) {
+    console.error('Error en /auth/me:', err.message);
+    return res.json({ authenticated: false });
   }
 });
 

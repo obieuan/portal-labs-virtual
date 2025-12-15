@@ -27,8 +27,25 @@ checkAdmin().then(isAdmin => {
     if (isAdmin) {
         loadAllLabs();
         loadUserStats();
+        registerFilters();
     }
 });
+
+let labsCache = [];
+let usersCache = [];
+let labsFiltered = [];
+let labPage = 1;
+const LAB_PAGE_SIZE = 10;
+
+function registerFilters() {
+    const labSearch = document.getElementById('labSearch');
+    const labStatusFilter = document.getElementById('labStatusFilter');
+    if (labSearch) labSearch.addEventListener('input', applyLabFilters);
+    if (labStatusFilter) labStatusFilter.addEventListener('change', applyLabFilters);
+
+    const userSearch = document.getElementById('userSearch');
+    if (userSearch) userSearch.addEventListener('input', applyUserFilters);
+}
 
 // Gestión de tabs
 function showTab(tabName) {
@@ -47,21 +64,73 @@ async function loadAllLabs() {
         const response = await fetch('/api/admin/all-labs', {
             credentials: 'include'
         });
-        const labs = await response.json();
-        
-        const list = document.getElementById('allLabsList');
-        const noLabs = document.getElementById('noAllLabs');
-        
-        if (labs.length === 0) {
-            list.innerHTML = '';
-            noLabs.classList.remove('hidden');
-        } else {
-            noLabs.classList.add('hidden');
-            list.innerHTML = labs.map(lab => renderAdminLab(lab)).join('');
-        }
+        labsCache = await response.json();
+        applyLabFilters(); // will render with filters + pagination
     } catch (error) {
         console.error('Error cargando labs:', error);
     }
+}
+
+function applyLabFilters() {
+    const term = (document.getElementById('labSearch')?.value || '').toLowerCase().trim();
+    const status = document.getElementById('labStatusFilter')?.value || 'ALL';
+
+    labsFiltered = labsCache.filter(lab => {
+        const matchTerm =
+            !term ||
+            (lab.email && lab.email.toLowerCase().includes(term)) ||
+            (lab.user_name && lab.user_name.toLowerCase().includes(term)) ||
+            (lab.container_name && lab.container_name.toLowerCase().includes(term));
+        const matchStatus = status === 'ALL' || lab.status === status;
+        return matchTerm && matchStatus;
+    });
+
+    labPage = 1;
+    renderLabsPaged();
+}
+
+function renderLabsPaged() {
+    const list = document.getElementById('allLabsList');
+    const noLabs = document.getElementById('noAllLabs');
+    const countLabel = document.getElementById('labCountLabel');
+    const pageInfo = document.getElementById('labPageInfo');
+    const prevBtn = document.getElementById('labPrevBtn');
+    const nextBtn = document.getElementById('labNextBtn');
+
+    const total = labsFiltered.length;
+    const totalPages = Math.max(1, Math.ceil(total / LAB_PAGE_SIZE));
+    labPage = Math.min(Math.max(labPage, 1), totalPages);
+
+    const start = (labPage - 1) * LAB_PAGE_SIZE;
+    const pageData = labsFiltered.slice(start, start + LAB_PAGE_SIZE);
+    const from = total === 0 ? 0 : start + 1;
+    const to = total === 0 ? 0 : start + pageData.length;
+
+    if (!list) return;
+
+    if (!pageData || pageData.length === 0) {
+        list.innerHTML = '';
+        if (noLabs) noLabs.classList.remove('hidden');
+    } else {
+        if (noLabs) noLabs.classList.add('hidden');
+        list.innerHTML = pageData.map(lab => renderAdminLab(lab)).join('');
+    }
+
+    if (countLabel) countLabel.textContent = `Mostrando ${from}-${to} de ${total}`;
+    if (pageInfo) pageInfo.textContent = `Página ${labPage} de ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = labPage <= 1;
+    if (nextBtn) nextBtn.disabled = labPage >= totalPages;
+}
+
+function labPrevPage() {
+    labPage = Math.max(labPage - 1, 1);
+    renderLabsPaged();
+}
+
+function labNextPage() {
+    const totalPages = Math.max(1, Math.ceil(labsFiltered.length / LAB_PAGE_SIZE));
+    labPage = Math.min(labPage + 1, totalPages);
+    renderLabsPaged();
 }
 
 // Renderizar lab para admin
@@ -71,23 +140,11 @@ function renderAdminLab(lab) {
     const timeLeft = Math.max(0, Math.floor((expiresAt - now) / 1000 / 60));
     const hours = Math.floor(timeLeft / 60);
     const minutes = timeLeft % 60;
-    
-    const timeColor = timeLeft < 30 ? 'text-red-500' : 'text-green-500';
-    
-    return `
-        <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <h3 class="text-xl font-bold text-blue-400">${lab.container_name}</h3>
-                    <p class="text-gray-400 text-sm">Usuario: ${lab.user_name} (${lab.email})</p>
-                    <p class="text-gray-400 text-sm">Creado: ${new Date(lab.created_at).toLocaleString('es-MX')}</p>
-                </div>
-                <div class="text-right">
-                    <p class="text-sm text-gray-400">Tiempo restante</p>
-                    <p class="${timeColor} font-bold text-lg">${hours}h ${minutes}m</p>
-                </div>
-            </div>
-            
+    const timeColor = lab.status !== 'ACTIVO' ? 'text-gray-400' : (timeLeft < 30 ? 'text-red-500' : 'text-green-500');
+
+    const statusLabel = getStatusLabel(lab.status);
+    const isActive = lab.status === 'ACTIVO';
+    const portsBlock = isActive ? `
             <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
                 <div><strong>SSH Port:</strong> ${lab.ssh_port}</div>
                 <div><strong>App Port:</strong> ${lab.app_port}</div>
@@ -107,6 +164,30 @@ function renderAdminLab(lab) {
                     <i class="fas fa-trash"></i> Eliminar
                 </button>
             </div>
+    ` : `
+            <div class="mt-4 text-sm text-gray-400">
+                <p>Detalles de conexión ocultos: laboratorio no activo.</p>
+            </div>
+    `;
+    
+    return `
+        <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-blue-400">${lab.container_name}</h3>
+                    <p class="text-gray-400 text-sm">Usuario: ${lab.user_name} (${lab.email})</p>
+                    <p class="text-gray-400 text-sm">Creado: ${new Date(lab.created_at).toLocaleString('es-MX')}</p>
+                    <span class="inline-block mt-2 px-2 py-1 text-xs rounded ${isActive ? 'bg-green-700 text-green-100' : 'bg-gray-600 text-gray-100'}">
+                        ${statusLabel}
+                    </span>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm text-gray-400">Tiempo restante</p>
+                    <p class="${timeColor} font-bold text-lg">${!isActive ? 'Inactivo' : (timeLeft === 0 ? 'EXPIRADO' : `${hours}h ${minutes}m`)}</p>
+                </div>
+            </div>
+            
+            ${portsBlock}
         </div>
     `;
 }
@@ -117,23 +198,79 @@ async function loadUserStats() {
         const response = await fetch('/api/admin/user-stats', {
             credentials: 'include'
         });
-        const users = await response.json();
-        
-        const table = document.getElementById('usersTable');
-        table.innerHTML = users.map(user => `
-            <tr class="${user.is_admin ? 'bg-purple-900 bg-opacity-20' : ''}">
-                <td class="px-4 py-3">
-                    ${user.name}
-                    ${user.is_admin ? '<span class="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">ADMIN</span>' : ''}
-                </td>
-                <td class="px-4 py-3">${user.email}</td>
-                <td class="px-4 py-3 text-center">${user.active_labs}</td>
-                <td class="px-4 py-3 text-center">${user.total_labs_created}</td>
-                <td class="px-4 py-3">${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}</td>
-            </tr>
-        `).join('');
+        usersCache = await response.json();
+        renderUsers(usersCache);
     } catch (error) {
         console.error('Error cargando usuarios:', error);
+    }
+}
+
+function applyUserFilters() {
+    const term = (document.getElementById('userSearch')?.value || '').toLowerCase().trim();
+    const filtered = usersCache.filter(u => {
+        return !term ||
+            (u.email && u.email.toLowerCase().includes(term)) ||
+            (u.name && u.name.toLowerCase().includes(term));
+    });
+    renderUsers(filtered);
+}
+
+function renderUsers(listData) {
+    const table = document.getElementById('usersTable');
+    if (!table) return;
+    table.innerHTML = (listData || []).map(user => {
+        const isProtected = user.id === 1; // proteger admin original
+        const canToggle = !isProtected;
+        const toggleLabel = user.is_admin ? 'Quitar admin' : 'Hacer admin';
+        const toggleClass = user.is_admin ? 'bg-gray-700 hover:bg-gray-600' : 'bg-purple-600 hover:bg-purple-500';
+        const toggleBtn = canToggle ? `
+            <button onclick="toggleAdmin(${user.id}, ${!user.is_admin})"
+                    class="${toggleClass} text-white px-3 py-1 rounded text-xs">
+                ${toggleLabel}
+            </button>
+        ` : '<span class="text-xs text-gray-400">Protegido</span>';
+
+        return `
+        <tr class="${user.is_admin ? 'bg-purple-900 bg-opacity-20' : ''}">
+            <td class="px-4 py-3">
+                ${user.name}
+                ${user.is_admin ? '<span class="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">ADMIN</span>' : ''}
+            </td>
+            <td class="px-4 py-3">${user.email}</td>
+            <td class="px-4 py-3 text-center">${user.active_labs}</td>
+            <td class="px-4 py-3 text-center">${user.total_labs_created}</td>
+            <td class="px-4 py-3">${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}</td>
+            <td class="px-4 py-3 text-center">${toggleBtn}</td>
+        </tr>
+    `;
+    }).join('');
+}
+
+async function toggleAdmin(userId, makeAdmin) {
+    try {
+        const resp = await fetch(`/api/admin/user/${userId}/admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ is_admin: makeAdmin })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            await loadUserStats();
+        } else {
+            alert(data.error || 'No se pudo actualizar el rol');
+        }
+    } catch (e) {
+        alert('Error actualizando rol');
+    }
+}
+
+function getStatusLabel(status) {
+    switch (status) {
+        case 'ACTIVO': return 'Activo';
+        case 'CANCELADO_POR_USUARIO': return 'Cancelado por usuario';
+        case 'CANCELADO_POR_TIEMPO': return 'Expirado';
+        default: return status || 'Desconocido';
     }
 }
 
