@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createLab, getUserLabs, getAllLabs, deleteLab, getStats } = require('../controllers/labController');
+const { createLab, getUserLabs, getAllLabs, deleteLab, getStats, getAllowedImages } = require('../controllers/labController');
 const pool = require('../config/database');
 const portainerClient = require('../config/portainer');
 
@@ -56,10 +56,20 @@ router.get('/admin/all-labs', requireAdmin, async (req, res) => {
 // Crear nuevo laboratorio
 router.post('/create', requireAuth, async (req, res) => {
   try {
-    const lab = await createLab(req.session.user.id, req.session.user.email);
+    const { image } = req.body || {};
+    const lab = await createLab(req.session.user.id, req.session.user.email, image);
     res.json(lab);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// Obtener lista de imagenes permitidas
+router.get('/images', requireAuth, async (req, res) => {
+  try {
+    res.json({ images: getAllowedImages() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

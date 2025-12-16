@@ -6,24 +6,143 @@
     <title>Portal de Laboratorios Virtuales</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .image-card {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: border-color 0.2s;
+        }
+        
+        .image-card:hover {
+            border-color: #4b5563;
+        }
+        
+        .image-card-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .image-card-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .image-card-logo img {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+        }
+        
+        .image-card-info {
+            flex: 1;
+        }
+        
+        .image-card-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f9fafb;
+            margin-bottom: 4px;
+        }
+        
+        .image-card-description {
+            font-size: 0.875rem;
+            color: #9ca3af;
+            line-height: 1.4;
+        }
+        
+        .image-card-divider {
+            width: 100%;
+            height: 1px;
+            background: #374151;
+        }
+        
+        .image-card-version-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+        }
+        
+        .version-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #d1d5db;
+            white-space: nowrap;
+        }
+        
+        .version-select {
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.875rem;
+            color: #f9fafb;
+            flex: 0 0 auto;
+            width: 200px;
+            outline: none;
+        }
+        
+        .version-select:focus {
+            border-color: #3b82f6;
+        }
+        
+        .image-card-button-wrapper {
+            display: flex;
+            justify-content: center;
+        }
+        
+        .deploy-button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 24px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            max-width: 250px;
+        }
+        
+        .deploy-button:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+        
+        .deploy-button:disabled {
+            background: #374151;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+    </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
     <!-- Navbar -->
     <nav class="bg-gray-800 border-b border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <i class="fas fa-flask text-blue-500 text-2xl mr-3"></i>
-                    <h1 class="text-xl font-bold">Laboratorios Virtuales</h1>
+            <div class="flex justify-between items-center h-16 gap-2">
+                <div class="flex items-center min-w-0">
+                    <i class="fas fa-flask text-blue-500 text-xl sm:text-2xl mr-2 sm:mr-3"></i>
+                    <h1 class="text-sm sm:text-xl font-bold truncate">Laboratorios Virtuales</h1>
                 </div>
-                <div class="flex items-center">
+                <div class="flex items-center gap-2 flex-shrink-0">
                     <button id="adminPanelBtn" onclick="goToAdminPanel()" 
-                            class="hidden bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mr-4 transition">
-                        <i class="fas fa-shield-alt"></i> Panel Admin
+                            class="hidden bg-purple-600 hover:bg-purple-700 text-white px-2 sm:px-4 py-2 rounded text-xs sm:text-base transition">
+                        <i class="fas fa-shield-alt"></i> <span class="hidden sm:inline">Panel Admin</span>
                     </button>
-                    <span class="text-gray-400 mr-4" id="userEmail"></span>
-                    <button onclick="logout()" class="text-red-400 hover:text-red-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
+                    <span class="text-gray-400 text-xs sm:text-base hidden md:inline mr-2" id="userEmail"></span>
+                    <button onclick="logout()" class="text-red-400 hover:text-red-300 text-xs sm:text-base">
+                        <i class="fas fa-sign-out-alt"></i> <span class="hidden sm:inline">Salir</span>
                     </button>
                 </div>
             </div>
@@ -76,15 +195,15 @@
             </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="mb-8">
-            <button 
-                onclick="createLab()" 
-                id="createBtn"
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 flex items-center gap-2">
-                <i class="fas fa-plus"></i>
-                Crear Nuevo Laboratorio
-            </button>
+        <!-- Selector de imagen por tarjetas -->
+        <div class="mb-8 space-y-4">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <i class="fas fa-boxes-stacked text-blue-400"></i>
+                Elige la imagen del laboratorio
+            </h2>
+            <p class="text-sm text-gray-400">Entorno limpio tipo mini-servidor para prácticas de programación y despliegue de servicios. Incluye 5 puertos libres para tus aplicaciones.</p>
+            <div id="imageCards" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+            <div id="imageCardsEmpty" class="text-gray-500 text-sm hidden">No hay imagenes configuradas.</div>
         </div>
 
         <!-- My Labs Section -->
@@ -101,7 +220,7 @@
             <div id="noLabs" class="text-center py-12 text-gray-500">
                 <i class="fas fa-flask text-6xl mb-4"></i>
                 <p class="text-xl">No tienes laboratorios activos</p>
-                <p class="text-sm mt-2">Haz clic en "Crear Nuevo Laboratorio" para comenzar</p>
+                <p class="text-sm mt-2">Haz clic en "Desplegar Laboratorio" para comenzar</p>
             </div>
         </div>
     </div>

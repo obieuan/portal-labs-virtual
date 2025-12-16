@@ -1,4 +1,4 @@
-// Verificar autenticación al cargar
+// Verificar autenticacion al cargar
 async function checkAuth() {
     try {
         const response = await fetch('/auth/me', {
@@ -12,29 +12,25 @@ async function checkAuth() {
             return false;
         }
         
-        // Guardar info del usuario
         window.currentUser = data.user;
         
-        // Mostrar email en navbar
         const userEmailElement = document.getElementById('userEmail');
         if (userEmailElement) {
             userEmailElement.textContent = data.user.email;
         }
         
-        // Mostrar/ocultar botón de admin
         if (data.user.isAdmin) {
             showAdminButton();
         }
         
         return true;
     } catch (error) {
-        console.error('Error verificando autenticación:', error);
+        console.error('Error verificando autenticacion:', error);
         window.location.href = '/login.html';
         return false;
     }
 }
 
-// Mostrar botón de panel admin
 function showAdminButton() {
     const adminBtn = document.getElementById('adminPanelBtn');
     if (adminBtn) {
@@ -42,15 +38,12 @@ function showAdminButton() {
     }
 }
 
-// Ir al panel admin
 function goToAdminPanel() {
     window.location.href = '/admin.html';
 }
 
-// Verificar autenticación ANTES de DOMContentLoaded
 checkAuth().then(authenticated => {
     if (authenticated) {
-        // Usuario autenticado, cargar página
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initApp);
         } else {
@@ -59,9 +52,15 @@ checkAuth().then(authenticated => {
     }
 });
 
-// Inicializar aplicación
+const API_URL = '/api';
+const PUBLIC_HOST = window.location.hostname || '158.69.215.225';
+const SSH_HOST = PUBLIC_HOST;
+const MAX_LABS_ALUMNO = 2;
+let allowedImages = [];
+
 function initApp() {
     const isAdmin = window.currentUser?.isAdmin;
+    loadImages();
     if (isAdmin) {
         loadStats();
         loadMyLabs();
@@ -74,11 +73,6 @@ function initApp() {
     }
 }
 
-const API_URL = '/api';
-const PUBLIC_HOST = window.location.hostname || '158.69.215.225';
-const SSH_HOST = PUBLIC_HOST;
-const MAX_LABS_ALUMNO = 2;
-
 function hideElementById(id) {
     const el = document.getElementById(id);
     if (el) {
@@ -86,7 +80,159 @@ function hideElementById(id) {
     }
 }
 
-// Cargar estadísticas
+// Cargar lista de imagenes permitidas
+async function loadImages() {
+    try {
+        const response = await fetch(`${API_URL}/labs/images`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+        allowedImages = data.images || [];
+        renderImageOptions();
+    } catch (error) {
+        console.error('Error cargando imagenes disponibles:', error);
+    }
+}
+
+function renderImageOptions() {
+    renderImageCards();
+}
+
+function setCreateButtonsEnabled(enabled, disabledMessage = null) {
+  const buttons = document.querySelectorAll('.create-lab-btn');
+  buttons.forEach(btn => {
+    if (btn.dataset.locked === 'true') {
+      return;
+    }
+    if (!btn.dataset.label) {
+      btn.dataset.label = btn.innerHTML;
+    }
+    btn.disabled = !enabled;
+    btn.classList.toggle('opacity-50', !enabled);
+        btn.classList.toggle('cursor-not-allowed', !enabled);
+        if (!enabled && disabledMessage) {
+            btn.innerHTML = `<i class="fas fa-ban"></i> ${disabledMessage}`;
+        } else {
+            btn.innerHTML = btn.dataset.label;
+        }
+  });
+}
+
+function renderImageCards() {
+  const container = document.getElementById('imageCards');
+  const empty = document.getElementById('imageCardsEmpty');
+  if (!container) return;
+
+  const DISTROS = [
+    {
+      key: 'ubuntu',
+      title: 'Ubuntu',
+      description: 'Entorno limpio tipo mini-servidor para prácticas de programación y despliegue de servicios. Incluye 5 puertos libres para tus aplicaciones.',
+      logo: './assets/ubuntu.png',
+      logoColor: '#E95420'
+    },
+    {
+      key: 'debian',
+      title: 'Debian',
+      description: 'Entorno limpio tipo mini-servidor para prácticas de programación y despliegue de servicios. Incluye 5 puertos libres para tus aplicaciones.',
+      logo: './assets/debian.png',
+      logoColor: '#A80030'
+    }
+  ];
+
+  const versionMap = (allowedImages || []).reduce((acc, img) => {
+    const [name, version = ''] = img.split(':');
+    if (!name) return acc;
+    acc[name] = acc[name] || [];
+    if (version) acc[name].push(version);
+    return acc;
+  }, {});
+
+  const sortVersionsDesc = (arr) => [...arr].sort((a, b) => {
+    const ap = a.split('.').map(n => parseInt(n, 10) || 0);
+    const bp = b.split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(ap.length, ap.length);
+    for (let i = 0; i < len; i++) {
+      const av = ap[i] ?? 0;
+      const bv = bp[i] ?? 0;
+      if (av !== bv) return bv - av;
+    }
+    return b.localeCompare(a);
+  });
+
+  const cards = DISTROS.map(distro => {
+    const versions = sortVersionsDesc(versionMap[distro.key] || []);
+    const hasVersions = versions.length > 0;
+    const selectId = `version-select-${distro.key}`;
+    const options = hasVersions
+      ? versions.map(v => `<option value="${v}">Version ${v}</option>`).join('')
+      : '<option value="">Sin versiones configuradas</option>';
+    const buttonLocked = hasVersions ? '' : 'data-locked="true"';
+    const buttonDisabled = hasVersions ? '' : 'disabled';
+
+    return `
+      <div class="image-card">
+        <!-- Header con logo, título y descripción -->
+        <div class="image-card-header">
+          <div class="image-card-logo" style="background-color: ${distro.logoColor}20;">
+            <img src="${distro.logo}" alt="${distro.title} logo" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=&quot;fas fa-box text-4xl&quot; style=&quot;color: ${distro.logoColor}&quot;></i>';">
+          </div>
+          <div class="image-card-info">
+            <h3 class="image-card-title">${distro.title}</h3>
+            <p class="image-card-description">${distro.description}</p>
+          </div>
+        </div>
+        
+        <!-- Divider -->
+        <div class="image-card-divider"></div>
+        
+        <!-- Sección de versión -->
+        <div class="image-card-version-section">
+          <label class="version-label">Elige versión:</label>
+          <select id="${selectId}" class="version-select" ${hasVersions ? '' : 'disabled'}>
+            ${options}
+          </select>
+        </div>
+        
+        <!-- Botón de desplegar -->
+        <div class="image-card-button-wrapper">
+          <button
+            class="deploy-button create-lab-btn"
+            onclick="createLabFromCard('${selectId}', '${distro.key}')"
+            data-label='<i class="fas fa-plus"></i> Desplegar Laboratorio'
+            ${buttonLocked} ${buttonDisabled}>
+            <i class="fas fa-plus"></i> Desplegar Laboratorio
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  if (!cards.length) {
+    container.innerHTML = '';
+    if (empty) empty.classList.remove('hidden');
+    return;
+  }
+
+  container.innerHTML = cards.join('');
+  if (empty) empty.classList.add('hidden');
+}
+
+function createLabFromCard(selectId, name) {
+  const select = document.getElementById(selectId);
+  if (!select) {
+    alert('No se encontró el selector de versión');
+    return;
+  }
+  const version = select.value;
+  if (!version) {
+    alert('Elige una versión antes de crear el laboratorio.');
+    return;
+  }
+  createLab(`${name}:${version}`);
+}
+
+// Cargar estadisticas
 async function loadStats() {
     if (!window.currentUser?.isAdmin) {
         return;
@@ -102,18 +248,9 @@ async function loadStats() {
         document.getElementById('availableLabs').textContent = data.availableLabs;
         document.getElementById('totalUsers').textContent = data.totalUsers;
         
-        const createBtn = document.getElementById('createBtn');
-        if (data.availableLabs === 0) {
-            createBtn.disabled = true;
-            createBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            createBtn.innerHTML = '<i class="fas fa-ban"></i> No hay laboratorios disponibles';
-        } else {
-            createBtn.disabled = false;
-            createBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            createBtn.innerHTML = '<i class="fas fa-plus"></i> Crear Nuevo Laboratorio';
-        }
+        setCreateButtonsEnabled(data.availableLabs > 0, data.availableLabs === 0 ? 'No hay laboratorios disponibles' : null);
     } catch (error) {
-        console.error('Error cargando estadísticas:', error);
+        console.error('Error cargando estadisticas:', error);
     }
 }
 
@@ -136,7 +273,6 @@ async function loadMyLabs() {
             labsList.innerHTML = labs.map(lab => renderLab(lab)).join('');
         }
 
-        // Para alumnos, actualizar contadores personales
         if (!window.currentUser?.isAdmin) {
             updateUserCounters(labs.length);
         }
@@ -172,19 +308,46 @@ function renderLab(lab) {
     const sshHost = SSH_HOST;
     const sshCommand = username ? `ssh -p ${lab.ssh_port} ${username}@${sshHost}` : 'SSH no disponible';
     const appUrl = `http://${PUBLIC_HOST}:${lab.app_port}`;
+    const exposedPorts = Array.isArray(lab.exposed_ports) ? lab.exposed_ports : [];
+    const portsChips = exposedPorts.map(p => `<span class="px-2 py-1 bg-gray-900 rounded text-xs border border-gray-700">${p}</span>`).join(' ');
+    
+    // Detectar distribución del nombre de la imagen
+    const imageName = (lab.image || '').toLowerCase();
+    let distroLogo = './assets/default.png';
+    let distroColor = '#6B7280';
+    
+    if (imageName.includes('ubuntu')) {
+        distroLogo = './assets/ubuntu.png';
+        distroColor = '#E95420';
+    } else if (imageName.includes('debian')) {
+        distroLogo = './assets/debian.png';
+        distroColor = '#A80030';
+    }
     
     return `
         <div class="bg-gray-700 rounded-lg p-6 border border-gray-600">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <h3 class="text-xl font-bold text-blue-400">${lab.container_name}</h3>
-                    <p class="text-gray-400 text-sm">Creado: ${new Date(lab.created_at).toLocaleString('es-MX')}</p>
+            <div class="flex gap-4 mb-4">
+                <!-- Logo de la distribución -->
+                <div class="flex-shrink-0">
+                    <div class="w-16 h-16 rounded-lg flex items-center justify-center" style="background-color: ${distroColor}20;">
+                        <img src="${distroLogo}" alt="Logo" class="w-12 h-12 object-contain" 
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=&quot;fas fa-server text-2xl&quot; style=&quot;color: ${distroColor}&quot;></i>';">
+                    </div>
                 </div>
-                <div class="text-right">
-                    <p class="text-sm text-gray-400">Tiempo restante</p>
-                    <p class="${timeColor} font-bold text-lg">
-                        ${isExpired ? 'EXPIRADO' : `${hours}h ${minutes}m`}
-                    </p>
+                
+                <!-- Información del lab -->
+                <div class="flex-1 flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-bold text-blue-400">${lab.container_name}</h3>
+                        <p class="text-gray-400 text-sm">Creado: ${new Date(lab.created_at).toLocaleString('es-MX')}</p>
+                        <p class="text-gray-400 text-sm">Imagen: ${lab.image || 'N/D'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-400">Tiempo restante</p>
+                        <p class="${timeColor} font-bold text-lg">
+                            ${isExpired ? 'EXPIRADO' : `${hours}h ${minutes}m`}
+                        </p>
+                    </div>
                 </div>
             </div>
             
@@ -198,34 +361,27 @@ function renderLab(lab) {
                     </code>
                     <p class="text-xs text-gray-400">
                         <strong>Usuario:</strong> ${username || 'No disponible'}<br>
-                        <strong>Contraseña:</strong> ${lab.password || 'No disponible'}
+                        <strong>Contrasena:</strong> ${lab.password || 'No disponible'}
                     </p>
                 </div>
                 
                 <div class="bg-gray-800 rounded p-4">
                     <h4 class="text-sm font-semibold text-gray-300 mb-2">
-                        <i class="fas fa-globe text-blue-500"></i> Aplicación Web
+                        <i class="fas fa-globe text-blue-500"></i> Acceso HTTP/puertos
                     </h4>
                     <a href="${appUrl}" target="_blank" 
                        class="text-blue-400 hover:text-blue-300 text-sm break-all">
                         ${appUrl}
                     </a>
                     <p class="text-xs text-gray-400 mt-2">
-                        <strong>Puerto:</strong> ${lab.app_port}
+                        <strong>Puerto principal:</strong> ${lab.app_port}
                     </p>
-                </div>
-            </div>
-            
-            <div class="bg-gray-800 rounded p-4 mb-4">
-                <h4 class="text-sm font-semibold text-gray-300 mb-2">
-                    <i class="fas fa-database text-purple-500"></i> Base de Datos PostgreSQL
-                </h4>
-                <div class="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                    <div><strong>Host:</strong> localhost</div>
-                    <div><strong>Puerto:</strong> 5432</div>
-                    <div><strong>Usuario:</strong> ${username || 'No disponible'}</div>
-                    <div><strong>Contraseña:</strong> ${lab.password || 'No disponible'}</div>
-                    <div class="col-span-2"><strong>Base de datos:</strong> proyecto_db</div>
+                    <div class="text-xs text-gray-400 mt-2">
+                        <strong>Puertos expuestos:</strong>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                            ${portsChips || '<span class="text-gray-500">N/D</span>'}
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -246,20 +402,22 @@ function renderLab(lab) {
 }
 
 // Crear laboratorio
-async function createLab() {
+async function createLab(image) {
     const loadingModal = document.getElementById('loadingModal');
     loadingModal.classList.remove('hidden');
     
     try {
         const response = await fetch(`${API_URL}/labs/create`, {
             method: 'POST',
-            credentials: 'include'
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image })
         });
         
         const data = await response.json();
         
         if (response.ok) {
-            alert('¡Laboratorio creado exitosamente!');
+            alert('Laboratorio creado exitosamente!');
             loadStats();
             loadMyLabs();
         } else {
@@ -274,7 +432,7 @@ async function createLab() {
 
 // Eliminar laboratorio
 async function deleteLab(labId) {
-    if (!confirm('¿Estás seguro de eliminar este laboratorio? Esta acción no se puede deshacer.')) {
+    if (!confirm('Estas seguro de eliminar este laboratorio? Esta accion no se puede deshacer.')) {
         return;
     }
     
@@ -307,7 +465,7 @@ function copySSH(port, username, host = SSH_HOST) {
 
 // Logout
 function logout() {
-    if (confirm('¿Estás seguro de cerrar sesión?')) {
+    if (confirm('Estas seguro de cerrar sesion?')) {
         window.location.href = '/auth/logout';
     }
 }

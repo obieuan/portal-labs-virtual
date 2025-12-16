@@ -11,18 +11,18 @@
     <!-- Navbar -->
     <nav class="bg-gray-800 border-b border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <i class="fas fa-shield-alt text-purple-500 text-2xl mr-3"></i>
-                    <h1 class="text-xl font-bold">Panel de Administración</h1>
+            <div class="flex justify-between items-center h-16 gap-2">
+                <div class="flex items-center min-w-0">
+                    <i class="fas fa-shield-alt text-purple-500 text-xl sm:text-2xl mr-2 sm:mr-3"></i>
+                    <h1 class="text-sm sm:text-xl font-bold truncate">Panel de Administración</h1>
                 </div>
-                <div class="flex items-center gap-4">
-                    <button onclick="goToMainPanel()" class="text-blue-400 hover:text-blue-300">
-                        <i class="fas fa-arrow-left"></i> Volver al Dashboard
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <button onclick="goToMainPanel()" class="text-blue-400 hover:text-blue-300 text-xs sm:text-base">
+                        <i class="fas fa-arrow-left"></i> <span class="hidden sm:inline">Volver al Dashboard</span>
                     </button>
-                    <span class="text-gray-400" id="userEmail"></span>
-                    <button onclick="logout()" class="text-red-400 hover:text-red-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
+                    <span class="text-gray-400 text-xs sm:text-base hidden md:inline" id="userEmail"></span>
+                    <button onclick="logout()" class="text-red-400 hover:text-red-300 text-xs sm:text-base">
+                        <i class="fas fa-sign-out-alt"></i> <span class="hidden sm:inline">Salir</span>
                     </button>
                 </div>
             </div>
@@ -37,11 +37,11 @@
             <div class="border-b border-gray-700">
                 <nav class="flex -mb-px">
                     <button onclick="showTab('allLabs')" id="tab-allLabs" 
-                            class="tab-button active py-4 px-6 border-b-2 font-medium">
-                        <i class="fas fa-server"></i> Todos los Labs
+                            class="tab-button active py-4 px-6 border-b-2 font-medium text-sm sm:text-base">
+                        <i class="fas fa-server"></i> <span class="hidden sm:inline">Todos los</span> Labs
                     </button>
                     <button onclick="showTab('users')" id="tab-users" 
-                            class="tab-button py-4 px-6 border-b-2 font-medium">
+                            class="tab-button py-4 px-6 border-b-2 font-medium text-sm sm:text-base">
                         <i class="fas fa-users"></i> Usuarios
                     </button>
                 </nav>
@@ -105,7 +105,8 @@
                            class="mt-1 w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
                 </div>
 
-                <div class="overflow-x-auto">
+                <!-- Vista de tabla en desktop -->
+                <div class="hidden md:block overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-gray-700">
                             <tr>
@@ -119,6 +120,9 @@
                         <tbody id="usersTable" class="divide-y divide-gray-700"></tbody>
                     </table>
                 </div>
+
+                <!-- Vista de cards en móvil -->
+                <div class="md:hidden space-y-3" id="usersMobileCards"></div>
             </div>
         </div>
     </div>

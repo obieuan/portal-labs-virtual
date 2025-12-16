@@ -217,7 +217,11 @@ function applyUserFilters() {
 
 function renderUsers(listData) {
     const table = document.getElementById('usersTable');
+    const mobileCards = document.getElementById('usersMobileCards');
+    
     if (!table) return;
+    
+    // Renderizar tabla para desktop
     table.innerHTML = (listData || []).map(user => {
         const isProtected = user.id === 1; // proteger admin original
         const canToggle = !isProtected;
@@ -244,6 +248,48 @@ function renderUsers(listData) {
         </tr>
     `;
     }).join('');
+    
+    // Renderizar cards para móvil
+    if (mobileCards) {
+        mobileCards.innerHTML = (listData || []).map(user => {
+            const isProtected = user.id === 1;
+            const canToggle = !isProtected;
+            const toggleLabel = user.is_admin ? 'Quitar admin' : 'Hacer admin';
+            const toggleClass = user.is_admin ? 'bg-gray-700 hover:bg-gray-600' : 'bg-purple-600 hover:bg-purple-500';
+            const toggleBtn = canToggle ? `
+                <button onclick="toggleAdmin(${user.id}, ${!user.is_admin})"
+                        class="${toggleClass} text-white px-3 py-1 rounded text-xs w-full">
+                    ${toggleLabel}
+                </button>
+            ` : '<span class="text-xs text-gray-400">Protegido</span>';
+            
+            return `
+                <div class="bg-gray-700 rounded-lg p-4 border border-gray-600 ${user.is_admin ? 'border-purple-500' : ''}">
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="font-semibold text-base">${user.name}</div>
+                        ${user.is_admin ? '<span class="text-xs bg-purple-600 px-2 py-1 rounded">ADMIN</span>' : ''}
+                    </div>
+                    <div class="text-sm text-gray-300 mb-3">${user.email}</div>
+                    <div class="grid grid-cols-2 gap-3 mb-3 text-sm">
+                        <div class="bg-gray-800 rounded p-2">
+                            <div class="text-gray-400 text-xs">Labs Activos</div>
+                            <div class="text-blue-400 font-semibold text-lg">${user.active_labs}</div>
+                        </div>
+                        <div class="bg-gray-800 rounded p-2">
+                            <div class="text-gray-400 text-xs">Total Creados</div>
+                            <div class="text-green-400 font-semibold text-lg">${user.total_labs_created}</div>
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-3">
+                        <i class="fas fa-clock"></i> Último login: ${user.last_login ? new Date(user.last_login).toLocaleString('es-MX') : 'Nunca'}
+                    </div>
+                    <div class="mt-3">
+                        ${toggleBtn}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 }
 
 async function toggleAdmin(userId, makeAdmin) {
