@@ -12,32 +12,38 @@ const MAX_LABS_ALUMNO = 2;
 const TTL_HOURS = 24;
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
 
-// Función auxiliar: Obtener siguiente puerto disponible evitando labs activos
-async function getNextAvailablePort(rangeStart, rangeEnd) {
-  const result = await pool.query(
-    'SELECT ssh_port, app_port FROM labs WHERE status = $1',
-    [STATUS.ACTIVO]
-  );
+const ENV_ALLOWED_IMAGES = process.env.ALLOWED_LAB_IMAGES
+  ? process.env.ALLOWED_LAB_IMAGES.split(',').map(img => img.trim()).filter(Boolean)
+  : [];
 
-  const usedPorts = new Set();
-  const addIfValid = (port) => {
-    if (typeof port === 'number' && !Number.isNaN(port)) {
-      usedPorts.add(port);
-    }
-  };
+const DEFAULT_ALLOWED_IMAGES = ['ubuntu:24.04', 'ubuntu:22.04', 'ubuntu:20.04'];
 
-  result.rows.forEach(row => {
-    addIfValid(row.ssh_port);
-    addIfValid(row.app_port);
-  });
-  
-  for (let port = rangeStart; port <= rangeEnd; port++) {
-    if (!usedPorts.has(port)) {
-      return port;
-    }
-  }
-  
-  throw new Error('No hay puertos disponibles');
+const ALLOWED_IMAGES = ENV_ALLOWED_IMAGES.length > 0
+  ? Array.from(new Set(ENV_ALLOWED_IMAGES))
+  : Array.from(new Set([process.env.LAB_IMAGE, ...DEFAULT_ALLOWED_IMAGES].filter(Boolean)));
+
+const EXPOSED_PORTS_COUNT = Number.isInteger(parseInt(process.env.LAB_EXPOSED_PORTS_COUNT, 10))
+  ? parseInt(process.env.LAB_EXPOSED_PORTS_COUNT, 10)
+  : 5;
+
+const DEFAULT_BLOCKED_PORTS = [
+  25565, // Minecraft
+  19132, 19133, // Minecraft Bedrock
+  27015, 27005, 27016, // Steam/CS
+  2302, // Arma
+  30120, // FiveM
+  3074, // Consoles / CoD
+  28960, // CoD 4
+  8766, // Steam
+  16261 // Project Zomboid
+];
+
+function buildBlockedPorts() {
+  const envPorts = (process.env.LAB_BLOCKED_PORTS || '')
+    .split(',')
+    .map(p => parseInt(p.trim(), 10))
+    .filter(p => Number.isInteger(p));
+  return new Set([...DEFAULT_BLOCKED_PORTS, ...envPorts]);
 }
 
 // Helper para obtener rangos de puertos sin depender del orden de la consulta
@@ -56,14 +62,63 @@ async function getPortRange(startKey, endKey) {
   const end = parseInt(config[endKey], 10);
 
   if (Number.isNaN(start) || Number.isNaN(end)) {
-    throw new Error(`Configuración de puertos incompleta: ${startKey}/${endKey}`);
+    throw new Error(`Configuracion de puertos incompleta: ${startKey}/${endKey}`);
   }
 
   if (start > end) {
-    throw new Error(`Rango de puertos inválido: ${startKey} (${start}) > ${endKey} (${end})`);
+    throw new Error(`Rango de puertos invalido: ${startKey} (${start}) > ${endKey} (${end})`);
   }
 
   return { start, end };
+}
+
+async function getUsedPorts() {
+  const result = await pool.query(
+    'SELECT ssh_port, app_port, exposed_ports FROM labs WHERE status = $1',
+    [STATUS.ACTIVO]
+  );
+
+  const used = new Set();
+  const addIfValid = (port) => {
+    if (Number.isInteger(port)) {
+      used.add(port);
+    }
+  };
+
+  result.rows.forEach(row => {
+    addIfValid(row.ssh_port);
+    addIfValid(row.app_port);
+    normalizeExposedPorts(row.exposed_ports).forEach(addIfValid);
+  });
+
+  return used;
+}
+
+function allocatePorts(rangeStart, rangeEnd, count, usedPorts, blockedPorts) {
+  const allocated = [];
+  for (let port = rangeStart; port <= rangeEnd; port++) {
+    if (usedPorts.has(port) || blockedPorts.has(port)) continue;
+    allocated.push(port);
+    usedPorts.add(port);
+    if (allocated.length === count) break;
+  }
+  if (allocated.length < count) {
+    throw new Error('No hay puertos disponibles en el rango configurado');
+  }
+  return allocated;
+}
+
+function normalizeExposedPorts(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 function deriveUsername(containerName, password) {
@@ -79,12 +134,26 @@ function deriveUsername(containerName, password) {
   return null;
 }
 
-// Función auxiliar: Generar docker-compose.yml
-function generateDockerCompose(sshPort, appPort, userEmail, stackName) {  
+function resolveImage(requestedImage) {
+  const normalized = (requestedImage || '').trim();
+  if (normalized) {
+    if (!ALLOWED_IMAGES.includes(normalized)) {
+      throw new Error(`Imagen no permitida. Usa una de: ${ALLOWED_IMAGES.join(', ')}`);
+    }
+    return normalized;
+  }
+  return ALLOWED_IMAGES[0];
+}
+
+function getAllowedImages() {
+  return ALLOWED_IMAGES;
+}
+
+// Generar docker-compose.yml
+function generateDockerCompose(sshPort, exposedPorts, userEmail, stackName, image) {  
   const username = userEmail.split('@')[0];
-  const password = username + '2024'; // Contraseña simple por ahora
-  const image = process.env.LAB_IMAGE || 'lab-base:latest';
-  const dbHostPort = appPort + 100; // evita colisión con backend (4000)
+  const password = username + '2024';
+  const portMappings = (exposedPorts || []).map(port => `      - "${port}:${port}"`).join('\n');
   
   return `version: '3.8'
 
@@ -95,25 +164,19 @@ services:
     working_dir: /home/${username}/proyecto
     ports:
       - "${sshPort}:22"
-      - "${appPort}:3000"
-      - "${dbHostPort}:5432"
+${portMappings}
     volumes:
       - lab_${stackName}_workspace:/home/${username}/proyecto
-    environment:
-      - POSTGRES_HOST=localhost
-      - POSTGRES_USER=${username}
-      - POSTGRES_PASSWORD=${password}
-      - POSTGRES_DB=proyecto_db
     command: >
       bash -c "
-      useradd -m -s /bin/bash ${username} &&
+      if ! command -v sshd >/dev/null 2>&1; then
+        apt-get update &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server sudo
+      fi &&
+      id -u ${username} >/dev/null 2>&1 || useradd -m -s /bin/bash ${username} &&
       echo '${username}:${password}' | chpasswd &&
       echo '${username} ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       chown -R ${username}:${username} /home/${username} &&
-      service postgresql start &&
-      sudo -u postgres psql -c \\"CREATE USER ${username} WITH PASSWORD '${password}';\\" 2>/dev/null || true &&
-      sudo -u postgres psql -c \\"CREATE DATABASE proyecto_db OWNER ${username};\\" 2>/dev/null || true &&
-      sudo -u postgres psql -c \\"GRANT ALL PRIVILEGES ON DATABASE proyecto_db TO ${username};\\" &&
       mkdir -p /run/sshd &&
       /usr/sbin/sshd -D
       "
@@ -130,9 +193,9 @@ volumes:
 }
 
 // Crear laboratorio
-async function createLab(userId, userEmail) {
+async function createLab(userId, userEmail, requestedImage) {
   try {
-    // 1. Verificar límites por usuario y globales
+    // 1. Verificar limites por usuario y globales
     const isAdmin = !!(await pool.query('SELECT is_admin FROM users WHERE id = $1', [userId])).rows?.[0]?.is_admin;
 
     const userActive = await pool.query(
@@ -142,7 +205,7 @@ async function createLab(userId, userEmail) {
     const userActiveCount = parseInt(userActive.rows[0].count, 10);
 
     if (!isAdmin && userActiveCount >= MAX_LABS_ALUMNO) {
-      throw new Error(`Límite alcanzado: máximo ${MAX_LABS_ALUMNO} laboratorios activos por usuario.`);
+      throw new Error(`Limite alcanzado: maximo ${MAX_LABS_ALUMNO} laboratorios activos por usuario.`);
     }
 
     const activeLabsResult = await pool.query(
@@ -159,17 +222,22 @@ async function createLab(userId, userEmail) {
     // 3. Obtener puertos disponibles
     const { start: sshPortStart, end: sshPortEnd } = await getPortRange('ssh_port_range_start', 'ssh_port_range_end');
     const { start: appPortStart, end: appPortEnd } = await getPortRange('app_port_range_start', 'app_port_range_end');
-    
-    const sshPort = await getNextAvailablePort(sshPortStart, sshPortEnd);
-    const appPort = await getNextAvailablePort(appPortStart, appPortEnd);
+    const blockedPorts = buildBlockedPorts();
+    const usedPorts = await getUsedPorts();
+
+    const sshPort = allocatePorts(sshPortStart, sshPortEnd, 1, usedPorts, blockedPorts)[0];
+    const exposedPorts = allocatePorts(appPortStart, appPortEnd, EXPOSED_PORTS_COUNT, usedPorts, blockedPorts);
+    const appPort = exposedPorts[0];
+
+    const image = resolveImage(requestedImage);
     
     // 4. Crear stack en Portainer
     if (!process.env.PORTAINER_URL || !process.env.PORTAINER_TOKEN) {
-      throw new Error('Portainer no está configurado. Define PORTAINER_URL y PORTAINER_TOKEN en el entorno.');
+      throw new Error('Portainer no esta configurado. Define PORTAINER_URL y PORTAINER_TOKEN en el entorno.');
     }
     const username = userEmail.split('@')[0];
     const stackName = `lab-${username}-${Date.now()}`;
-    const dockerCompose = generateDockerCompose(sshPort, appPort, userEmail, stackName); 
+    const dockerCompose = generateDockerCompose(sshPort, exposedPorts, userEmail, stackName, image); 
     
     let portainerResponse;
     try {
@@ -182,21 +250,21 @@ async function createLab(userId, userEmail) {
       );
     } catch (err) {
       if (err.code === 'ECONNREFUSED') {
-        throw new Error('No se pudo conectar a Portainer (ECONNREFUSED). ¿Está corriendo y accesible en PORTAINER_URL?');
+        throw new Error('No se pudo conectar a Portainer (ECONNREFUSED). ¿Esta corriendo y accesible en PORTAINER_URL?');
       }
       throw err;
     }
     
-    // 5. Calcular tiempo de expiración (24h fijo para MVP)
+    // 5. Calcular tiempo de expiracion (24h fijo para MVP)
     const expiresAt = new Date(Date.now() + TTL_HOURS * 60 * 60 * 1000);
     
     // 6. Guardar en base de datos
     const password = username + '2024';
     const insertResult = await pool.query(
-      `INSERT INTO labs (user_id, owner_email, container_name, ssh_port, ssh_username, app_port, stack_id, portainer_endpoint_id, password, expires_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO labs (user_id, owner_email, container_name, ssh_port, ssh_username, app_port, exposed_ports, image, stack_id, portainer_endpoint_id, password, expires_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [userId, userEmail, stackName, sshPort, username, appPort, portainerResponse.data.Id, process.env.PORTAINER_ENDPOINT_ID, password, expiresAt, STATUS.ACTIVO]
+      [userId, userEmail, stackName, sshPort, username, appPort, JSON.stringify(exposedPorts), image, portainerResponse.data.Id, process.env.PORTAINER_ENDPOINT_ID, password, expiresAt, STATUS.ACTIVO]
     );
     
     // 7. Registrar actividad
@@ -205,7 +273,7 @@ async function createLab(userId, userEmail) {
       [userId, 'lab_created', `Laboratorio ${stackName} creado`]
     );
     
-    // 8. Retornar información del laboratorio
+    // 8. Retornar informacion del laboratorio
     return {
       id: insertResult.rows[0].id,
       ssh: {
@@ -219,13 +287,8 @@ async function createLab(userId, userEmail) {
         url: `http://${PUBLIC_HOST}:${appPort}`,
         port: appPort
       },
-      database: {
-        host: 'localhost',
-        port: 5432,
-        username: username,
-        password: password,
-        database: 'proyecto_db'
-      },
+      exposed_ports: exposedPorts,
+      image,
       expiresAt: expiresAt,
       createdAt: insertResult.rows[0].created_at,
       status: STATUS.ACTIVO
@@ -245,7 +308,8 @@ async function getUserLabs(userId) {
   );
   return result.rows.map((row) => ({
     ...row,
-    ssh_username: deriveUsername(row.container_name, row.password)
+    ssh_username: deriveUsername(row.container_name, row.password),
+    exposed_ports: normalizeExposedPorts(row.exposed_ports)
   }));
 }
 
@@ -256,7 +320,8 @@ async function getAllLabs() {
   );
   return result.rows.map((row) => ({
     ...row,
-    ssh_username: deriveUsername(row.container_name, row.password)
+    ssh_username: deriveUsername(row.container_name, row.password),
+    exposed_ports: normalizeExposedPorts(row.exposed_ports)
   }));
 }
 
@@ -316,18 +381,18 @@ async function cleanupExpiredLabs() {
           [lab.user_id, 'lab_expired', `Laboratorio ${lab.container_name} expirado y eliminado`]
         );
         
-        console.log(`✅ Laboratorio ${lab.container_name} eliminado (expirado)`);
+        console.log(`OK. Laboratorio ${lab.container_name} eliminado (expirado)`);
       } catch (error) {
-        console.error(`❌ Error eliminando lab ${lab.container_name}:`, error.message);
+        console.error(`Error eliminando lab ${lab.container_name}:`, error.message);
       }
     }
     
   } catch (error) {
-    console.error('Error en limpieza automática:', error);
+    console.error('Error en limpieza automatica:', error);
   }
 }
 
-// Obtener estadísticas
+// Obtener estadisticas
 async function getStats() {
   const activeLabs = await pool.query(
     'SELECT COUNT(*) FROM labs WHERE status = $1',
@@ -361,5 +426,6 @@ module.exports = {
   getAllLabs,
   deleteLab,
   cleanupExpiredLabs,
-  getStats
+  getStats,
+  getAllowedImages
 };
