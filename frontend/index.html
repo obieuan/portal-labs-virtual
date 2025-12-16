@@ -133,13 +133,14 @@
             <div class="flex justify-between items-center h-16 gap-2">
                 <div class="flex items-center min-w-0">
                     <i class="fas fa-flask text-blue-500 text-xl sm:text-2xl mr-2 sm:mr-3"></i>
-                    <h1 class="text-sm sm:text-xl font-bold truncate">Panel de Administración</h1>
+                    <h1 class="text-sm sm:text-xl font-bold truncate">Laboratorios Virtuales</h1>
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
-                    <span class="text-gray-400 text-xs sm:text-base hidden md:inline mr-2" id="userEmail"></span>
-                    <button onclick="goToMainPanel()" class="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-4 py-2 rounded text-xs sm:text-base transition">
-                        <i class="fas fa-arrow-left"></i> <span class="hidden sm:inline">Volver</span>
+                    <button id="adminPanelBtn" onclick="goToAdminPanel()" 
+                            class="hidden bg-purple-600 hover:bg-purple-700 text-white px-2 sm:px-4 py-2 rounded text-xs sm:text-base transition">
+                        <i class="fas fa-shield-alt"></i> <span class="hidden sm:inline">Panel Admin</span>
                     </button>
+                    <span class="text-gray-400 text-xs sm:text-base hidden md:inline mr-2" id="userEmail"></span>
                     <button onclick="logout()" class="text-red-400 hover:text-red-300 text-xs sm:text-base">
                         <i class="fas fa-sign-out-alt"></i> <span class="hidden sm:inline">Salir</span>
                     </button>
